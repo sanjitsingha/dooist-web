@@ -1,26 +1,51 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Styles for the side nav when it's collapsed to icons (see lib/sidebar.ts). */
+@custom-variant rail (&:where([data-sidebar="collapsed"] *));
 
+/* Dooist orange, with the Android app's neutrals (src/constants/theme.ts). Light mode only. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-primary: #fc5c2c;
+  /* Lighter on hover, so dark text on it stays readable. */
+  --color-primary-pressed: #fd7b54;
+  --color-ink: #1f2937;
+  --color-field: #f1f5f9;
+  --color-line: #e2e8f0;
+  --color-text: #0f172a;
+  --color-muted: #64748b;
+  --color-danger: #dc2626;
+  --color-success: #16a34a;
+  --color-canvas: #f8fafc;
+  --color-subtle: #94a3b8;
+  --color-ink-soft: #e5e7eb;
+  /* Priority cards and due-date chips, as in the Android app. */
+  --color-danger-soft: #fee2e2;
+  --color-danger-deep: #991b1b;
+  --color-amber-soft: #fef3c7;
+  --color-amber-dark: #b45309;
+  --color-amber-deep: #92400e;
+  --color-sky-soft: #e0f2fe;
+  --color-sky-dark: #0369a1;
+  --color-sky-deep: #075985;
+  --color-sun-soft: #fef9c3;
+  --color-sun-dark: #a16207;
+  --color-accent-soft: #ffedd5;
+  --color-accent-dark: #c2410c;
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: var(--color-text);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* The password field has its own eye button. */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
 }
