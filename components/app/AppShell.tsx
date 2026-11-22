@@ -1,10 +1,18 @@
 "use client";
 
 import { X } from "lucide-react";
-import { createContext, use, useMemo, useState, type ReactNode } from "react";
+import { createContext, use, useCallback, useMemo, useState, type ReactNode } from "react";
 
+import { AccountSheet } from "@/components/app/AccountSheet";
 import { BottomNav, Sidebar } from "@/components/app/AppNav";
+import { NotificationsSheet } from "@/components/app/NotificationsSheet";
+import { SearchSheet } from "@/components/app/SearchSheet";
+import { SettingsSheet } from "@/components/app/SettingsSheet";
 import { AddTodoSheet } from "@/components/home/TodoSheets";
+import { useAddTodoShortcut } from "@/hooks/useAddTodoShortcut";
+import { useAppearance } from "@/hooks/useAppearance";
+import { useBrowserNotifications } from "@/hooks/useBrowserNotifications";
+import { useNotifications } from "@/hooks/useNotifications";
 import { useToday } from "@/hooks/useToday";
 import { useTodos } from "@/hooks/useTodos";
 import type { DateKey } from "@/lib/dates";
@@ -17,7 +25,6 @@ type AppValue = ReturnType<typeof useTodos> & {
   selected: DateKey | null;
   /** Picks a day. Null goes back to following today. */
   selectDate: (date: DateKey | null) => void;
-  showError: (message: string) => void;
 };
 
 const AppContext = createContext<AppValue | null>(null);
@@ -46,16 +53,40 @@ export function AppShell({
   // Until a day is picked, it follows today, including past midnight.
   const [picked, setPicked] = useState<DateKey | null>(null);
   const [adding, setAdding] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const { appearance, setAppearance } = useAppearance(user.id);
+  const alerts = useNotifications(user.id, todos.todos, version);
   const [accountError, setAccountError] = useState<string | null>(null);
 
   const selected = picked ?? today;
   const value = useMemo(
-    () => ({ ...todos, user, today, selected, selectDate: setPicked, showError: setAccountError }),
+    () => ({ ...todos, user, today, selected, selectDate: setPicked }),
     [todos, user, today, selected],
   );
 
   const { addTodo, saveError, clearSaveError } = todos;
-  const openAdd = () => setAdding(true);
+  const openAdd = useCallback(() => setAdding(true), []);
+  const openAccount = () => setAccountOpen(true);
+  const openNotifications = useCallback(() => {
+    setAccountOpen(false);
+    setSettingsOpen(false);
+    setSearchOpen(false);
+    setNotificationsOpen(true);
+  }, []);
+  useBrowserNotifications(user.id, alerts.notifications, alerts.now, openNotifications);
+  const openSettings = () => {
+    setAccountOpen(false);
+    setSearchOpen(false);
+    setSettingsOpen(true);
+  };
+  const openSearch = () => {
+    setAccountOpen(false);
+    setSearchOpen(true);
+  };
+  useAddTodoShortcut(openAdd);
   const message = saveError ?? accountError;
 
   return (
@@ -65,11 +96,16 @@ export function AppShell({
           user={user}
           version={version}
           onAdd={openAdd}
+          onSearch={openSearch}
           onSync={todos.sync}
           onError={setAccountError}
+          onOpenProfile={openAccount}
+          onOpenSettings={openSettings}
+          unreadNotifications={alerts.unread}
+          onOpenNotifications={openNotifications}
         />
         <main className="min-w-0 flex-1 pb-24 md:pb-10">{children}</main>
-        <BottomNav onAdd={openAdd} />
+        <BottomNav onAdd={openAdd} onOpenProfile={openAccount} />
 
         {adding && today && selected ? (
           <AddTodoSheet
@@ -85,10 +121,58 @@ export function AppShell({
           />
         ) : null}
 
+        {accountOpen ? (
+          <AccountSheet
+            user={user}
+            unreadNotifications={alerts.unread}
+            onOpenNotifications={openNotifications}
+            onOpenSearch={openSearch}
+            onOpenSettings={openSettings}
+            onClose={() => setAccountOpen(false)}
+          />
+        ) : null}
+
+        {searchOpen ? (
+          <SearchSheet
+            user={user}
+            todos={todos.todos}
+            todosStatus={todos.status}
+            today={today}
+            onRetryTodos={todos.retry}
+            onUpdateTodo={todos.updateTodo}
+            onToggleTodo={todos.toggleTodo}
+            onDeleteTodo={todos.deleteTodo}
+            onAppearanceChange={setAppearance}
+            onOpenSettings={openSettings}
+            onClose={() => setSearchOpen(false)}
+          />
+        ) : null}
+
+        {settingsOpen ? (
+          <SettingsSheet
+            user={user}
+            appearance={appearance}
+            onAppearanceChange={setAppearance}
+            whenSaved={todos.whenSaved}
+            onClose={() => setSettingsOpen(false)}
+          />
+        ) : null}
+
+        {notificationsOpen ? (
+          <NotificationsSheet
+            notifications={alerts.notifications}
+            unread={alerts.unread}
+            now={alerts.now}
+            onRead={alerts.markRead}
+            onReadAll={alerts.markAllRead}
+            onClose={() => setNotificationsOpen(false)}
+          />
+        ) : null}
+
         {message ? (
           <div
             role="alert"
-            className="fixed inset-x-4 bottom-24 z-20 mx-auto flex max-w-sm items-center gap-3 rounded-xl bg-ink px-4 py-3 text-sm text-white md:bottom-6"
+            className="fixed inset-x-4 bottom-24 z-20 mx-auto flex max-w-sm items-center gap-3 rounded-xl bg-ink px-4 py-3 text-sm text-on-ink md:bottom-6"
           >
             <span className="flex-1">{message}</span>
             <button
@@ -98,7 +182,7 @@ export function AppShell({
                 clearSaveError();
                 setAccountError(null);
               }}
-              className="cursor-pointer rounded-md p-1 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
+              className="cursor-pointer rounded-md p-1 hover:bg-on-ink/10 focus-visible:outline-2 focus-visible:outline-on-ink"
             >
               <X aria-hidden="true" className="size-4" />
             </button>

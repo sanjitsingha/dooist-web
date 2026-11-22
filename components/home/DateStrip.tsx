@@ -38,7 +38,7 @@ const WHEEL_STEP = 100;
 const DRAG_THRESHOLD = 4;
 
 const ARROW =
-  "flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-ink";
+  "flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-ink";
 
 function indexOfDay(key: DateKey, anchor: DateKey): number {
   const difference = fromDateKey(key).getTime() - fromDateKey(anchor).getTime();
@@ -361,18 +361,16 @@ const DayItem = memo(function DayItem({
       className="group absolute top-0 flex h-full cursor-pointer snap-center flex-col items-center rounded-lg py-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink"
     >
       <span
-        className={`text-[13px] leading-4 ${isCentered ? "font-bold text-text" : "text-subtle"}`}
+        className={`text-[13px] leading-4 ${isCentered ? "font-bold" : ""} ${
+          isToday ? "text-primary" : isCentered ? "text-text" : "text-subtle"
+        }`}
       >
         {weekday}
       </span>
       <span
         className={`mt-0.5 flex size-7 items-center justify-center rounded-lg text-[15px] transition-colors ${
-          isCentered
-            ? "bg-ink-soft font-semibold text-text"
-            : isToday
-              ? "font-semibold text-primary group-hover:bg-field"
-              : "text-muted group-hover:bg-field"
-        }`}
+          isCentered ? "bg-ink-soft font-semibold" : "group-hover:bg-field"
+        } ${isToday ? "text-primary" : isCentered ? "text-text" : "text-muted"}`}
       >
         {date}
       </span>

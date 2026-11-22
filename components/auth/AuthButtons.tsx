@@ -13,7 +13,7 @@ function Spinner() {
   return (
     <span
       aria-hidden="true"
-      className="size-5 animate-spin rounded-full border-2 border-ink/25 border-t-ink"
+      className="size-5 animate-spin rounded-full border-2 border-current/25 border-t-current"
     />
   );
 }
@@ -27,7 +27,7 @@ export function SubmitButton({ label }: { label: string }) {
       disabled={pending}
       aria-label={label}
       aria-busy={pending}
-      className={`${BUTTON} mt-2 bg-primary text-ink hover:bg-primary-pressed`}
+      className={`${BUTTON} mt-2 bg-primary text-white hover:bg-primary-pressed`}
     >
       {pending ? <Spinner /> : label}
     </button>
@@ -75,7 +75,7 @@ export function GoogleButton({ onError }: { onError: (message: string | null) =>
       disabled={busy}
       aria-label="Continue with Google"
       aria-busy={busy}
-      className={`${BUTTON} border border-line bg-white text-text hover:bg-field`}
+      className={`${BUTTON} border border-line bg-surface text-text hover:bg-field`}
     >
       {busy ? (
         <Spinner />

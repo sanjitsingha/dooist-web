@@ -1,9 +1,15 @@
-import { isAuthError, isAuthRetryableFetchError } from "@supabase/supabase-js";
+import {
+  isAuthError,
+  isAuthRetryableFetchError,
+  isAuthSessionMissingError,
+} from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 
 /** What a sign-in action gives back: null, or what went wrong, ready to show. */
 export type AuthProblem = string | null;
+
+const SIGNED_OUT = "You’ve been signed out. Log in again and try once more.";
 
 /** A Supabase error as a short sentence, worded like the Android app. */
 function describe(error: unknown): string {
@@ -79,6 +85,39 @@ export async function signInWithGoogle(): Promise<AuthProblem> {
       options: { redirectTo: callbackUrl() },
     });
     return error ? describe(error) : null;
+  } catch (error) {
+    return describe(error);
+  }
+}
+
+/**
+ * Saved as `display_name`, like the Android app, because Supabase rewrites Google's `name` at each
+ * Google sign-in. The session is then refreshed, since the server reads the name from its token.
+ */
+export async function updateDisplayName(name: string): Promise<AuthProblem> {
+  try {
+    const supabase = createClient();
+    const { error } = await supabase.auth.updateUser({ data: { display_name: name.trim() } });
+    if (isAuthSessionMissingError(error)) return SIGNED_OUT;
+    if (error) return describe(error);
+    // The name is saved either way. A failed refresh only delays it showing here.
+    await supabase.auth.refreshSession().catch(() => undefined);
+    return null;
+  } catch (error) {
+    return describe(error);
+  }
+}
+
+/** For someone who signed up with Google, this adds email and password as a second way in. */
+export async function changePassword(password: string): Promise<AuthProblem> {
+  try {
+    const { error } = await createClient().auth.updateUser({ password });
+    if (!error) return null;
+    if (isAuthSessionMissingError(error)) return SIGNED_OUT;
+    if (isAuthError(error) && error.code === "reauthentication_needed") {
+      return "For your security, log out and log back in, then try again.";
+    }
+    return describe(error);
   } catch (error) {
     return describe(error);
   }

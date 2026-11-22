@@ -4,7 +4,7 @@ import {
   Bell,
   Calendar,
   Check,
-  Clock,
+  ChevronDown,
   Flag,
   Hourglass,
   Undo2,
@@ -21,10 +21,23 @@ import {
   type ReactNode,
 } from "react";
 
-import { formatDuration, fromDateKey, type DateKey } from "@/lib/dates";
+import { OverflowMenu } from "@/components/app/OverflowMenu";
+import { DatePickerSheet } from "@/components/home/DatePickerSheet";
+import { Sheet } from "@/components/home/Sheet";
+import { TimeSelector } from "@/components/home/TimeSelector";
+import { useNow } from "@/hooks/useNow";
+import {
+  MINUTES_PER_DAY,
+  earliestReminderMinute,
+  formatDueDateTime,
+  formatDuration,
+  formatLongDate,
+  formatTime,
+  fromDateKey,
+  type DateKey,
+} from "@/lib/dates";
 import {
   PRIORITIES,
-  priorityOf,
   type NewTodo,
   type Priority,
   type Todo,
@@ -33,7 +46,9 @@ import {
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 const CONTROL =
-  "h-9 rounded-lg border-[1.5px] border-transparent bg-field px-2.5 text-sm font-medium text-text outline-none transition-colors focus:border-primary focus:bg-white";
+  "h-9 rounded-lg border-[1.5px] border-transparent bg-field px-2.5 text-sm font-medium text-text outline-none transition-colors focus:border-primary focus:bg-surface";
+/** A date or time value that opens its picker modal. */
+const PICKER_BUTTON = `${CONTROL} inline-flex cursor-pointer items-center gap-1.5 hover:bg-line focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ink`;
 /** The name and description read as plain text, with no box or outline, like the Android app. */
 const TEXT_FIELD = "block w-full resize-none bg-transparent outline-none field-sizing-content";
 const MAIN_BUTTON =
@@ -57,68 +72,6 @@ function scheduleProblem(
     if (at.getTime() <= Date.now()) return "Pick a reminder time that’s still ahead.";
   }
   return null;
-}
-
-/** A bottom sheet on phones and a centered panel on desktop. */
-function Sheet({
-  label,
-  large = false,
-  onRequestClose,
-  children,
-}: {
-  label: string;
-  /** A wider panel with more room around it, on desktop. */
-  large?: boolean;
-  onRequestClose: () => void;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const pressedBackdrop = useRef(false);
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-    return () => dialog?.close();
-  }, []);
-
-  return (
-    <dialog
-      ref={ref}
-      aria-label={label}
-      onCancel={(event) => {
-        event.preventDefault();
-        onRequestClose();
-      }}
-      onMouseDown={(event) => {
-        pressedBackdrop.current = event.target === event.currentTarget;
-      }}
-      onClick={(event) => {
-        // Only a full click on the backdrop, not a text selection dragged out of the sheet.
-        if (event.target === event.currentTarget && pressedBackdrop.current) onRequestClose();
-      }}
-      className={`mx-auto mt-auto mb-0 max-h-[92dvh] w-full max-w-none overflow-y-auto rounded-t-3xl bg-white text-text backdrop:bg-ink/30 md:m-auto md:rounded-3xl ${
-        large ? "md:w-[640px]" : "md:w-[480px]"
-      }`}
-    >
-      <div
-        className={`relative px-5 pt-5 pb-[max(20px,env(safe-area-inset-bottom))] ${
-          large ? "md:p-8" : ""
-        }`}
-      >
-        <button
-          type="button"
-          onClick={onRequestClose}
-          aria-label="Close"
-          className={`absolute top-3 right-3 z-10 flex size-9 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-ink ${
-            large ? "md:top-6 md:right-6" : ""
-          }`}
-        >
-          <X aria-hidden="true" className="size-5" />
-        </button>
-        {children}
-      </div>
-    </dialog>
-  );
 }
 
 function Row({
@@ -145,55 +98,153 @@ function Row({
   );
 }
 
-/** A time box with a clear button once it has a value. */
+/** The time control under a reminder. Times already passed on its day can't be picked. */
+function ReminderTime({
+  value,
+  reminderDate,
+  onChange,
+}: {
+  value: string;
+  reminderDate: DateKey;
+  onChange: (value: string) => void;
+}) {
+  const now = useNow();
+  const earliest = earliestReminderMinute(reminderDate, now);
+  if (earliest >= MINUTES_PER_DAY) {
+    return (
+      <p className="px-2 pb-2 text-sm leading-5 text-muted">
+        This day is over. Pick a later due date to set a reminder.
+      </p>
+    );
+  }
+  return <TimeSelector value={value} earliest={earliest} onChange={onChange} />;
+}
+
+/** A reminder that opens its time control right under it, with a clear button once it's set. */
 function TimeRow({
   icon,
   label,
   value,
+  reminderDate,
   onChange,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
+  /** The day the reminder is on. */
+  reminderDate: DateKey;
   onChange: (value: string) => void;
 }) {
   const id = useId();
+  const panelId = useId();
+  const [open, setOpen] = useState(false);
   return (
-    <Row icon={icon} label={label} htmlFor={id}>
-      {value ? (
+    <div>
+      <Row icon={icon} label={label} htmlFor={id}>
+        {value ? (
+          <button
+            type="button"
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+            aria-label={`Remove ${label.toLowerCase()}`}
+            className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
+          >
+            <X aria-hidden="true" className="size-4" />
+          </button>
+        ) : null}
         <button
+          id={id}
           type="button"
-          onClick={() => onChange("")}
-          aria-label={`Remove ${label.toLowerCase()}`}
-          className="flex size-8 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-ink"
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={`${label}: ${value ? formatTime(value) : "not set"}`}
+          onClick={() => setOpen((current) => !current)}
+          className={PICKER_BUTTON}
         >
-          <X aria-hidden="true" className="size-4" />
+          <span className={value ? "" : "text-muted"}>{value ? formatTime(value) : "Add"}</span>
+          <ChevronDown
+            aria-hidden="true"
+            className={`size-3.5 text-muted transition-transform ${open ? "rotate-180" : ""}`}
+          />
         </button>
-      ) : null}
-      <input
+      </Row>
+      <div id={panelId} className="-mx-2">
+        {open ? (
+          <ReminderTime value={value} reminderDate={reminderDate} onChange={onChange} />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** The due date and optional time, which open the date modal. */
+function DateRow({
+  value,
+  time,
+  today,
+  onChange,
+}: {
+  value: DateKey;
+  time: string;
+  today: DateKey;
+  onChange: (date: DateKey, time: string) => void;
+}) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  return (
+    <Row icon={Calendar} label="Due date" htmlFor={id}>
+      <button
         id={id}
-        type="time"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={CONTROL}
-      />
+        type="button"
+        aria-haspopup="dialog"
+        aria-label={`Due date: ${formatLongDate(value)}${time ? `, ${formatTime(time)}` : ""}`}
+        onClick={() => setOpen(true)}
+        className={PICKER_BUTTON}
+      >
+        {formatDueDateTime(value, time || undefined, fromDateKey(today))}
+        <ChevronDown aria-hidden="true" className="size-3.5 text-muted" />
+      </button>
+      {open ? (
+        <DatePickerSheet
+          value={value}
+          time={time}
+          today={today}
+          onSave={(date, nextTime) => {
+            onChange(date, nextTime);
+            setOpen(false);
+          }}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </Row>
   );
 }
 
-function DateRow({ value, min, onChange }: { value: string; min?: string; onChange: (value: string) => void }) {
+/** How long a todo takes. A length set on the phone stays, even if it isn't one of these. */
+function DurationRow({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const id = useId();
+  const current = Number(value);
+  const options =
+    value && !DURATIONS.includes(current)
+      ? [...DURATIONS, current].sort((a, b) => a - b)
+      : DURATIONS;
   return (
-    <Row icon={Calendar} label="Due date" htmlFor={id}>
-      <input
+    <Row icon={Hourglass} label="Duration" htmlFor={id}>
+      <select
         id={id}
-        type="date"
-        required
-        min={min}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={CONTROL}
-      />
+        className={`${CONTROL} cursor-pointer`}
+      >
+        <option value="">None</option>
+        {options.map((minutes) => (
+          <option key={minutes} value={minutes}>
+            {formatDuration(minutes)}
+          </option>
+        ))}
+      </select>
     </Row>
   );
 }
@@ -207,7 +258,7 @@ function PriorityField({ value, onChange }: { value: Priority; onChange: (value:
       className="flex min-h-[52px] items-center justify-between gap-2"
     >
       <span aria-hidden="true" className="flex items-center gap-2.5 text-base text-text">
-        <Flag className={`size-5 ${priorityOf(value).icon}`} />
+        <Flag className="size-5 text-ink" />
         Priority
       </span>
       <div className="flex gap-1">
@@ -216,7 +267,7 @@ function PriorityField({ value, onChange }: { value: Priority; onChange: (value:
           return (
             <label
               key={priority.value}
-              className={`cursor-pointer rounded-full px-3 py-1.5 text-sm transition-colors has-focus-visible:outline-2 has-focus-visible:outline-offset-1 has-focus-visible:outline-ink ${
+              className={`cursor-pointer rounded-lg px-3 py-1.5 text-sm transition-colors max-[340px]:px-1.5 has-focus-visible:outline-2 has-focus-visible:outline-offset-1 has-focus-visible:outline-ink ${
                 checked ? priority.pill : "font-medium text-muted hover:bg-field"
               }`}
             >
@@ -259,7 +310,6 @@ export function AddTodoSheet({
 }) {
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
-  const durationId = useId();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState(startDate < today ? today : startDate);
@@ -300,7 +350,7 @@ export function AddTodoSheet({
   };
 
   return (
-    <Sheet label="Add todo" large onRequestClose={onClose}>
+    <Sheet label="Add todo" medium onRequestClose={onClose}>
       <form onSubmit={submit} noValidate>
         <div className="pr-8">
           <textarea
@@ -323,39 +373,27 @@ export function AddTodoSheet({
           aria-label="Description, optional"
           placeholder="Description"
           onChange={(event) => setDescription(event.target.value)}
-          className={`${TEXT_FIELD} mt-1 max-h-40 py-1 text-base leading-[22px] placeholder:text-muted md:min-h-12`}
+          className={`${TEXT_FIELD} mt-1 max-h-40 py-1 text-base leading-[22px] placeholder:text-muted`}
         />
 
         <div className="mt-1">
           <DateRow
             value={dueDate}
-            min={today}
-            onChange={(value) => {
-              setDueDate(value);
+            time={dueTime}
+            today={today}
+            onChange={(date, time) => {
+              setDueDate(date);
+              setDueTime(time);
               setProblem(null);
             }}
           />
-          <TimeRow icon={Clock} label="Time" value={dueTime} onChange={setDueTime} />
           <PriorityField value={priority} onChange={setPriority} />
-          <Row icon={Hourglass} label="Duration" htmlFor={durationId}>
-            <select
-              id={durationId}
-              value={duration}
-              onChange={(event) => setDuration(event.target.value)}
-              className={`${CONTROL} cursor-pointer`}
-            >
-              <option value="">None</option>
-              {DURATIONS.map((minutes) => (
-                <option key={minutes} value={minutes}>
-                  {formatDuration(minutes)}
-                </option>
-              ))}
-            </select>
-          </Row>
+          <DurationRow value={duration} onChange={setDuration} />
           <TimeRow
             icon={Bell}
             label="Reminder"
             value={reminder}
+            reminderDate={dueDate}
             onChange={(value) => {
               setReminder(value);
               setProblem(null);
@@ -367,7 +405,7 @@ export function AddTodoSheet({
         <button
           type="submit"
           disabled={!canAdd}
-          className={`${MAIN_BUTTON} bg-primary text-ink enabled:hover:bg-primary-pressed`}
+          className={`${MAIN_BUTTON} bg-primary text-white enabled:hover:bg-primary-pressed`}
         >
           Add todo
         </button>
@@ -385,12 +423,14 @@ export function TodoDetailsSheet({
   today,
   onSave,
   onToggle,
+  onDelete,
   onClose,
 }: {
   todo: Todo;
   today: DateKey;
   onSave: (changes: TodoChanges) => void;
   onToggle: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   // Compared against the todo as it was on opening, so a phone change that arrives meanwhile
@@ -401,8 +441,10 @@ export function TodoDetailsSheet({
   const [dueDate, setDueDate] = useState(todo.dueDate);
   const [dueTime, setDueTime] = useState(todo.dueTime ?? "");
   const [priority, setPriority] = useState(todo.priority);
+  const [duration, setDuration] = useState(todo.duration ? String(todo.duration) : "");
   const [reminder, setReminder] = useState(todo.reminderTime ?? "");
   const [problem, setProblem] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   /** Saves what changed. False when something needs fixing first. */
   const saveChanges = () => {
@@ -428,6 +470,8 @@ export function TodoDetailsSheet({
     if (dateChanged) changes.dueDate = dueDate;
     if (dueTime !== (opened.dueTime ?? "")) changes.dueTime = dueTime || undefined;
     if (priority !== opened.priority) changes.priority = priority;
+    const nextDuration = duration ? Number(duration) : undefined;
+    if (nextDuration !== (opened.duration || undefined)) changes.duration = nextDuration;
     if (reminderChanged) changes.reminderTime = reminder || undefined;
 
     if (Object.keys(changes).length > 0) onSave(changes);
@@ -445,8 +489,21 @@ export function TodoDetailsSheet({
   };
 
   return (
-    <Sheet label="Todo details" onRequestClose={close}>
-      <div className="pr-8">
+    <Sheet
+      label="Todo details"
+      medium
+      // While asking about deleting, closing means "no" first.
+      onRequestClose={confirmingDelete ? () => setConfirmingDelete(false) : close}
+    >
+      <div className="absolute top-3 right-[52px] z-10">
+        <OverflowMenu
+          label="Todo options"
+          actions={[
+            { label: "Delete", destructive: true, onSelect: () => setConfirmingDelete(true) },
+          ]}
+        />
+      </div>
+      <div className="pr-[72px]">
         <textarea
           rows={1}
           value={title}
@@ -479,17 +536,21 @@ export function TodoDetailsSheet({
 
       <DateRow
         value={dueDate}
-        onChange={(value) => {
-          setDueDate(value);
+        time={dueTime}
+        today={today}
+        onChange={(date, time) => {
+          setDueDate(date);
+          setDueTime(time);
           setProblem(null);
         }}
       />
-      <TimeRow icon={Clock} label="Time" value={dueTime} onChange={setDueTime} />
       <PriorityField value={priority} onChange={setPriority} />
+      <DurationRow value={duration} onChange={setDuration} />
       <TimeRow
         icon={Bell}
         label="Reminder"
         value={reminder}
+        reminderDate={dueDate}
         onChange={(value) => {
           setReminder(value);
           setProblem(null);
@@ -497,22 +558,51 @@ export function TodoDetailsSheet({
       />
 
       <ProblemLine message={problem} />
-      <button
-        type="button"
-        onClick={toggle}
-        className={`${MAIN_BUTTON} ${
-          todo.completed
-            ? "bg-field text-text hover:bg-line"
-            : "bg-primary text-ink hover:bg-primary-pressed"
-        }`}
-      >
-        {todo.completed ? (
-          <Undo2 aria-hidden="true" className="size-5" />
-        ) : (
-          <Check aria-hidden="true" className="size-5" />
-        )}
-        {todo.completed ? "Mark as not done" : "Mark as done"}
-      </button>
+      {confirmingDelete ? (
+        <div role="group" aria-label="Delete this todo?" className="mt-3">
+          <p className="text-base font-semibold text-text">Delete this todo?</p>
+          <p className="mt-1 text-sm leading-5 wrap-break-word text-muted">
+            “{todo.title}” will be deleted. This can’t be undone.
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setConfirmingDelete(false)}
+              className={`${MAIN_BUTTON} bg-field text-text hover:bg-line`}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              className={`${MAIN_BUTTON} bg-danger text-on-status hover:brightness-95`}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={toggle}
+          className={`${MAIN_BUTTON} ${
+            todo.completed
+              ? "bg-field text-text hover:bg-line"
+              : "bg-primary text-white hover:bg-primary-pressed"
+          }`}
+        >
+          {todo.completed ? (
+            <Undo2 aria-hidden="true" className="size-5" />
+          ) : (
+            <Check aria-hidden="true" className="size-5" />
+          )}
+          {todo.completed ? "Mark as not done" : "Mark as done"}
+        </button>
+      )}
     </Sheet>
   );
 }

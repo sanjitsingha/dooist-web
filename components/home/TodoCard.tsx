@@ -29,7 +29,7 @@ function DueDateChip({ todo, now }: { todo: Todo; now: Date }) {
   const look = overdue
     ? "gap-1 text-danger"
     : kind
-      ? `gap-[3px] rounded-full px-1.5 py-px ${CHIPS[kind]}`
+      ? `gap-[3px] rounded-md px-1.5 py-px ${CHIPS[kind]}`
       : "gap-1 text-muted";
 
   return (
@@ -76,10 +76,10 @@ export function TodoCard({
         aria-checked={todo.completed}
         aria-label={`Mark ${todo.title} as ${todo.completed ? "not done" : "done"}`}
         onClick={() => onToggle(todo)}
-        className={`relative m-[3px] flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-[5px] border-[1.5px] transition-colors before:absolute before:-inset-2.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
+        className={`relative m-[3px] flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-sm border-[1.5px] transition-colors before:absolute before:-inset-2.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
           todo.completed
-            ? "border-primary bg-primary text-ink"
-            : "border-subtle bg-white hover:border-primary"
+            ? "border-primary bg-primary text-white"
+            : "border-subtle bg-surface hover:border-primary"
         }`}
       >
         {todo.completed ? <Check aria-hidden="true" strokeWidth={3} className="size-[13px]" /> : null}

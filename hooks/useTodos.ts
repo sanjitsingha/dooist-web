@@ -135,7 +135,8 @@ export function useTodos(userId: string) {
         } catch {
           // Handled below, the same as an error from Supabase.
         }
-        if (row) saved.current.set(row.id, fromRow(row));
+        if (row?.deleted_at) saved.current.delete(row.id);
+        else if (row) saved.current.set(row.id, fromRow(row));
         else anyFailed.current = true;
 
         unsent.current -= 1;
@@ -200,7 +201,39 @@ export function useTodos(userId: string) {
     [userId, write],
   );
 
-  const clearSaveError = useCallback(() => setSaveError(null), []);
+  /** Marks it deleted in the account, like the Android app, so its history and other devices see it. */
+  const deleteTodo = useCallback(
+    (id: string) => {
+      write(
+        (current) => current.filter((todo) => todo.id !== id),
+        () =>
+          createClient()
+            .from("todos")
+            .update({ deleted_at: new Date().toISOString() })
+            .eq("user_id", userId)
+            .eq("id", id)
+            .select()
+            .maybeSingle(),
+      );
+    },
+    [userId, write],
+  );
 
-  return { todos, status, saveError, clearSaveError, retry, sync, addTodo, updateTodo, toggleTodo };
+  const clearSaveError = useCallback(() => setSaveError(null), []);
+  /** Resolves once every change made so far has been sent. */
+  const whenSaved = useCallback(() => queue.current, []);
+
+  return {
+    todos,
+    status,
+    saveError,
+    clearSaveError,
+    retry,
+    sync,
+    whenSaved,
+    addTodo,
+    updateTodo,
+    toggleTodo,
+    deleteTodo,
+  };
 }

@@ -32,8 +32,7 @@ export const PRIORITIES: readonly {
   /** The open card's background and title. */
   card: string;
   title: string;
-  /** The flag icon, and the picked pill in a sheet. */
-  icon: string;
+  /** The picked pill in a sheet. */
   pill: string;
 }[] = [
   {
@@ -41,7 +40,6 @@ export const PRIORITIES: readonly {
     label: "High",
     card: "bg-danger-soft",
     title: "text-danger-deep",
-    icon: "text-danger",
     pill: "bg-danger-soft font-semibold text-danger",
   },
   {
@@ -49,7 +47,6 @@ export const PRIORITIES: readonly {
     label: "Medium",
     card: "bg-amber-soft",
     title: "text-amber-deep",
-    icon: "text-amber-dark",
     pill: "bg-amber-soft font-semibold text-amber-dark",
   },
   {
@@ -57,7 +54,6 @@ export const PRIORITIES: readonly {
     label: "Low",
     card: "bg-sky-soft",
     title: "text-sky-deep",
-    icon: "text-sky-dark",
     pill: "bg-sky-soft font-semibold text-sky-dark",
   },
 ];

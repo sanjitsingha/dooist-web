@@ -19,20 +19,20 @@ import { priorityOf, type Todo } from "@/lib/todos";
 const MIN_HOUR_HEIGHT = 48;
 const DEFAULT_HOUR_HEIGHT = 64;
 const MAX_HOUR_HEIGHT = 240;
-const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+export const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 /** Room on the left for the time labels. */
-const GUTTER_WIDTH = 56;
+export const GUTTER_WIDTH = 56;
 /** Space above 12 am, so its label isn't cut off. */
 const GRID_TOP = 10;
 /** Room below 11 pm for a block that starts late to run past midnight. */
-const GRID_BOTTOM = 64;
+export const GRID_BOTTOM = 64;
 /** A block reaches at most half an hour down. */
 const BLOCK_MINUTES = 30;
 /** Space below each block, so stacked blocks don't touch. */
-const BLOCK_GAP = 2;
+export const BLOCK_GAP = 2;
 /** How tall a one-line title is, until a block has been measured. */
-const ONE_LINE_HEIGHT = 28;
+export const ONE_LINE_HEIGHT = 28;
 /** How much of the day shows above the time the timeline opens at. */
 const LEAD_MINUTES = 120;
 
@@ -44,7 +44,7 @@ function rememberZoom(height: number) {
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 const clampHeight = (height: number) => clamp(height, MIN_HOUR_HEIGHT, MAX_HOUR_HEIGHT);
-const offsetOf = (minutes: number, hourHeight: number) => GRID_TOP + (minutes / 60) * hourHeight;
+export const offsetOf = (minutes: number, hourHeight: number) => GRID_TOP + (minutes / 60) * hourHeight;
 const hourLabel = (hour: number) => `${hour % 12 || 12} ${hour < 12 ? "am" : "pm"}`;
 
 type BlockInput = { start: number; contentHeight: number };
@@ -54,7 +54,7 @@ type BlockInput = { start: number; contentHeight: number };
  * its time and reaches down to the next todo's time (at most half an hour), but is never shorter
  * than its title. Todos too close for that are pushed down, so they stack instead of overlapping.
  */
-function layoutBlocks(inputs: readonly BlockInput[], hourHeight: number) {
+export function layoutBlocks(inputs: readonly BlockInput[], hourHeight: number) {
   let previousBottom = 0;
   return inputs.map(({ start, contentHeight }, index) => {
     const next = inputs[index + 1];
@@ -70,61 +70,15 @@ function layoutBlocks(inputs: readonly BlockInput[], hourHeight: number) {
 }
 
 /**
- * The picked day like a calendar's day view: times down the left, each timed todo as a block
- * tinted by priority, untimed todos in an "All day" row, and a red line at the current time.
- * Zooms with a pinch or Ctrl + scroll (which is also how a trackpad pinch arrives).
+ * How tall an hour is, and the scrolling element it zooms. Zooms with a pinch or Ctrl + scroll
+ * (which is also how a trackpad pinch arrives), keeping the same time under the fingers.
  */
-export function TodoTimeline({
-  todos,
-  date,
-  onOpen,
-}: {
-  todos: readonly Todo[];
-  date: DateKey;
-  onOpen: (todo: Todo) => void;
-}) {
-  const now = useNow();
-  const isToday = date === toDateKey(now);
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
+export function useTimelineZoom() {
   const scroller = useRef<HTMLDivElement>(null);
   const [hourHeight, setHourHeight] = useState(savedHourHeight);
   const latestHeight = useRef(savedHourHeight);
   /** Where to scroll once a new zoom is on the page, so the same time stays in place. */
   const pendingTop = useRef<number | null>(null);
-  const [contentHeights, setContentHeights] = useState<Record<string, number>>({});
-
-  const measureBlock = useCallback((id: string, height: number) => {
-    setContentHeights((current) =>
-      Math.abs((current[id] ?? 0) - height) < 1 ? current : { ...current, [id]: height },
-    );
-  }, []);
-
-  const timed = useMemo(
-    () =>
-      todos
-        .filter((todo): todo is Todo & { dueTime: string } => todo.dueTime !== undefined)
-        .map((todo) => ({ todo, start: toDayMinutes(todo.dueTime) }))
-        .sort((a, b) => a.start - b.start || a.todo.createdAt - b.todo.createdAt),
-    [todos],
-  );
-  const allDay = useMemo(() => todos.filter((todo) => todo.dueTime === undefined), [todos]);
-  const blocks = useMemo(
-    () =>
-      layoutBlocks(
-        timed.map(({ todo, start }) => ({
-          start,
-          contentHeight: contentHeights[todo.id] ?? ONE_LINE_HEIGHT,
-        })),
-        hourHeight,
-      ),
-    [timed, contentHeights, hourHeight],
-  );
-  const lastBlock = blocks[blocks.length - 1];
-  const gridHeight = Math.max(
-    offsetOf(24 * 60, hourHeight),
-    lastBlock ? lastBlock.top + lastBlock.height : 0,
-  );
 
   const anchorAt = useCallback((focalY: number) => {
     const top = pendingTop.current ?? scroller.current?.scrollTop ?? 0;
@@ -147,22 +101,6 @@ export function TodoTimeline({
       pendingTop.current = null;
     }
   }, [hourHeight]);
-
-  // Opens two hours above now (today), the first timed todo, or 8 am.
-  const scrollToStart = useEffectEvent(() => {
-    const element = scroller.current;
-    if (!element) return;
-    const current = new Date();
-    const start =
-      date === toDateKey(current)
-        ? current.getHours() * 60 + current.getMinutes()
-        : (timed[0]?.start ?? 8 * 60);
-    element.scrollTop = Math.max(offsetOf(start - LEAD_MINUTES, latestHeight.current), 0);
-  });
-  // Also runs when Next.js shows this page again after another one, like the Android tab.
-  useLayoutEffect(() => {
-    scrollToStart();
-  }, [date]);
 
   useEffect(() => {
     const element = scroller.current;
@@ -224,6 +162,83 @@ export function TodoTimeline({
     };
   }, [anchorAt, zoomAround]);
 
+  /** Scrolls so this time of day sits a little below the top. */
+  const scrollToMinutes = useCallback((minutes: number) => {
+    const element = scroller.current;
+    if (!element) return;
+    element.scrollTop = Math.max(offsetOf(minutes - LEAD_MINUTES, latestHeight.current), 0);
+  }, []);
+
+  return { scroller, hourHeight, scrollToMinutes };
+}
+
+/**
+ * The picked day like a calendar's day view: times down the left, each timed todo as a block
+ * tinted by priority, untimed todos in an "All day" row, and a red line at the current time.
+ * Zooms with a pinch or Ctrl + scroll (which is also how a trackpad pinch arrives).
+ */
+export function TodoTimeline({
+  todos,
+  date,
+  onOpen,
+}: {
+  todos: readonly Todo[];
+  date: DateKey;
+  onOpen: (todo: Todo) => void;
+}) {
+  const now = useNow();
+  const isToday = date === toDateKey(now);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+  const { scroller, hourHeight, scrollToMinutes } = useTimelineZoom();
+  const [contentHeights, setContentHeights] = useState<Record<string, number>>({});
+
+  const measureBlock = useCallback((id: string, height: number) => {
+    setContentHeights((current) =>
+      Math.abs((current[id] ?? 0) - height) < 1 ? current : { ...current, [id]: height },
+    );
+  }, []);
+
+  const timed = useMemo(
+    () =>
+      todos
+        .filter((todo): todo is Todo & { dueTime: string } => todo.dueTime !== undefined)
+        .map((todo) => ({ todo, start: toDayMinutes(todo.dueTime) }))
+        .sort((a, b) => a.start - b.start || a.todo.createdAt - b.todo.createdAt),
+    [todos],
+  );
+  const allDay = useMemo(() => todos.filter((todo) => todo.dueTime === undefined), [todos]);
+  const blocks = useMemo(
+    () =>
+      layoutBlocks(
+        timed.map(({ todo, start }) => ({
+          start,
+          contentHeight: contentHeights[todo.id] ?? ONE_LINE_HEIGHT,
+        })),
+        hourHeight,
+      ),
+    [timed, contentHeights, hourHeight],
+  );
+  const lastBlock = blocks[blocks.length - 1];
+  const gridHeight = Math.max(
+    offsetOf(24 * 60, hourHeight),
+    lastBlock ? lastBlock.top + lastBlock.height : 0,
+  );
+
+  // Opens two hours above now (today), the first timed todo, or 8 am.
+  const scrollToStart = useEffectEvent(() => {
+    const current = new Date();
+    scrollToMinutes(
+      date === toDateKey(current)
+        ? current.getHours() * 60 + current.getMinutes()
+        : (timed[0]?.start ?? 8 * 60),
+    );
+  });
+  // Also runs when Next.js shows this page again after another one, like the Android tab.
+  useLayoutEffect(() => {
+    scrollToStart();
+  }, [date]);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {allDay.length > 0 ? (
@@ -234,7 +249,7 @@ export function TodoTimeline({
           >
             All day
           </span>
-          <div className="flex max-h-28 min-w-0 flex-1 flex-col gap-1 overflow-y-auto [scrollbar-width:thin]">
+          <div className="flex max-h-28 min-w-0 flex-1 flex-col gap-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {allDay.map((todo) => (
               <TimelineChip key={todo.id} todo={todo} onOpen={onOpen} />
             ))}
@@ -248,7 +263,7 @@ export function TodoTimeline({
           role="region"
           aria-label="Timeline"
           tabIndex={0}
-          className="absolute inset-0 touch-pan-y overflow-y-auto overscroll-y-contain [scrollbar-width:thin] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink"
+          className="absolute inset-0 touch-pan-y overflow-y-auto overscroll-y-contain [scrollbar-width:none] focus-visible:outline-2 [&::-webkit-scrollbar]:hidden focus-visible:-outline-offset-2 focus-visible:outline-ink"
         >
           <div className="relative" style={{ height: gridHeight + GRID_BOTTOM }}>
             {HOURS.map((hour) => (
@@ -287,7 +302,7 @@ export function TodoTimeline({
   );
 }
 
-const HourRow = memo(function HourRow({ hour, top }: { hour: number; top: number }) {
+export const HourRow = memo(function HourRow({ hour, top }: { hour: number; top: number }) {
   return (
     <div aria-hidden="true" className="absolute inset-x-0 flex h-4 items-center" style={{ top }}>
       <span
@@ -302,18 +317,21 @@ const HourRow = memo(function HourRow({ hour, top }: { hour: number; top: number
 });
 
 /** One todo: a box tinted by priority with its title in full. Done todos are gray. */
-function TimelineChip({
+export function TimelineChip({
   todo,
   onOpen,
   onMeasure,
   showTime = false,
   fill = false,
+  stacked = false,
 }: {
   todo: Todo;
   onOpen: (todo: Todo) => void;
   onMeasure?: (id: string, height: number) => void;
   showTime?: boolean;
   fill?: boolean;
+  /** The time under the title, for a narrow column. */
+  stacked?: boolean;
 }) {
   const priority = priorityOf(todo.priority);
   const time = showTime && todo.dueTime ? formatTime(todo.dueTime) : null;
@@ -340,7 +358,10 @@ function TimelineChip({
         fill ? "h-full" : ""
       } ${todo.completed ? "bg-field" : priority.card}`}
     >
-      <span ref={content} className="flex w-full items-start gap-2 px-2 py-[5px]">
+      <span
+        ref={content}
+        className={`flex w-full px-2 py-[5px] ${stacked ? "flex-col" : "items-start gap-2"}`}
+      >
         <span
           className={`min-w-0 flex-1 text-sm leading-[18px] font-semibold wrap-break-word ${
             todo.completed ? "text-subtle line-through" : priority.title

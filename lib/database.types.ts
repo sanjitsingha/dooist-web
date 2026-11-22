@@ -24,6 +24,26 @@ export type TodoRow = {
 /** `updated_at` is stamped by the server on every write. */
 export type TodoInsert = Omit<TodoRow, "updated_at"> & { updated_at?: string };
 
+/** One row per account, shared with the Android app. The web only changes `appearance`. */
+export type UserSettingsRow = {
+  user_id: string;
+  feedback: "vibrate" | "tick" | "tickVibrate" | "none";
+  todo_view: "list" | "timeline";
+  appearance: "light" | "dark" | "system";
+  updated_at: string;
+};
+
+/** Readable by its owner. Only the google-calendar Edge Function writes it. */
+export type CalendarConnectionRow = {
+  user_id: string;
+  connected: boolean;
+  google_email: string | null;
+  last_error: string | null;
+  sync_todos: boolean;
+  show_events: boolean;
+  can_read_events: boolean;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -31,6 +51,18 @@ export type Database = {
         Row: TodoRow;
         Insert: TodoInsert;
         Update: Partial<TodoInsert>;
+        Relationships: [];
+      };
+      user_settings: {
+        Row: UserSettingsRow;
+        Insert: Partial<UserSettingsRow> & Pick<UserSettingsRow, "user_id">;
+        Update: Partial<UserSettingsRow>;
+        Relationships: [];
+      };
+      calendar_connections: {
+        Row: CalendarConnectionRow;
+        Insert: never;
+        Update: never;
         Relationships: [];
       };
     };

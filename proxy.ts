@@ -1,12 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { PRIVACY_PATH } from "@/lib/site";
 import { supabaseConfig } from "@/lib/supabase/config";
 
 /** Only for people who aren't signed in. */
 const AUTH_PAGES = ["/login", "/register"];
-/** Open to everyone: finishing a sign-in happens here, before there's a session. */
-const PUBLIC_PATHS = ["/auth/callback"];
+/** Open to everyone: public pages, and finishing a sign-in, which happens before there's a session. */
+const PUBLIC_PATHS = ["/auth/callback", PRIVACY_PATH];
 
 /** Keeps the session fresh, and sends people to the right side of the login wall. */
 export async function proxy(request: NextRequest) {

@@ -25,7 +25,8 @@ const TIMELINE_PAGE =
 
 /** The Today screen: the picked day's todos, the web version of the Android Todo tab. */
 export function HomeScreen() {
-  const { today, selected, selectDate, todos, status, retry, updateTodo, toggleTodo } = useApp();
+  const { today, selected, selectDate, todos, status, retry, updateTodo, toggleTodo, deleteTodo } =
+    useApp();
   const { view, toggle: toggleView } = useTodoView();
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -111,6 +112,7 @@ export function HomeScreen() {
           onClose={() => setOpenId(null)}
           onSave={(changes) => updateTodo(detailsTodo.id, changes)}
           onToggle={() => toggleTodo(detailsTodo)}
+          onDelete={() => deleteTodo(detailsTodo.id)}
         />
       ) : null}
     </div>
@@ -145,7 +147,7 @@ function DayHeader({
           <button
             type="button"
             onClick={onToday}
-            className="h-9 shrink-0 cursor-pointer rounded-full border border-line px-4 text-sm font-semibold text-ink transition-colors hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+            className="h-9 shrink-0 cursor-pointer rounded-lg border border-line px-4 text-sm font-semibold text-ink transition-colors hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
           >
             Today
           </button>
@@ -158,7 +160,7 @@ function DayHeader({
           aria-label="Timeline view"
           title={isTimeline ? "Switch to list" : "Switch to timeline"}
           onClick={onToggleView}
-          className="-my-1 flex size-11 cursor-pointer items-center justify-center rounded-full text-ink transition-colors hover:bg-field focus-visible:outline-2 focus-visible:outline-ink"
+          className="-my-1 flex size-11 cursor-pointer items-center justify-center rounded-lg text-ink transition-colors hover:bg-field focus-visible:outline-2 focus-visible:outline-ink"
         >
           {isTimeline ? (
             <GalleryVertical aria-hidden="true" size={18.2} strokeWidth={2.2} />
@@ -190,7 +192,7 @@ function CompletedSection({
           type="button"
           onClick={() => setExpanded((open) => !open)}
           aria-expanded={expanded}
-          className="flex cursor-pointer items-center gap-1.5 rounded-[10px] px-3 py-2 text-[15px] transition-colors hover:bg-field focus-visible:outline-2 focus-visible:outline-ink"
+          className="flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-2 text-[15px] transition-colors hover:bg-field focus-visible:outline-2 focus-visible:outline-ink"
         >
           <span className="font-semibold text-text">Completed</span>
           <span className="font-medium text-muted">{todos.length}</span>
@@ -221,14 +223,14 @@ function EmptyDay({ date, now }: { date: DateKey; now: Date }) {
   );
 }
 
-function LoadError({ onRetry }: { onRetry: () => void }) {
+export function LoadError({ onRetry }: { onRetry: () => void }) {
   return (
     <div role="alert" className="flex flex-col items-center gap-3 px-6 py-20 text-center">
       <p className="text-[15px] text-muted">Couldn’t load your todos.</p>
       <button
         type="button"
         onClick={onRetry}
-        className="h-10 cursor-pointer rounded-xl bg-primary px-5 text-sm font-semibold text-ink transition-colors hover:bg-primary-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        className="h-10 cursor-pointer rounded-xl bg-primary px-5 text-sm font-semibold text-white transition-colors hover:bg-primary-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
       >
         Try again
       </button>

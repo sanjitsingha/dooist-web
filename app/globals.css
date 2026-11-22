@@ -3,45 +3,200 @@
 /* Styles for the side nav when it's collapsed to icons (see lib/sidebar.ts). */
 @custom-variant rail (&:where([data-sidebar="collapsed"] *));
 
-/* Dooist orange, with the Android app's neutrals (src/constants/theme.ts). Light mode only. */
+/* Dooist orange on pure grays. The values for each look are in :root below (see lib/theme.ts). */
 @theme inline {
   --color-primary: #fc5c2c;
-  /* Lighter on hover, so dark text on it stays readable. */
-  --color-primary-pressed: #fd7b54;
-  --color-ink: #1f2937;
-  --color-field: #f1f5f9;
-  --color-line: #e2e8f0;
-  --color-text: #0f172a;
-  --color-muted: #64748b;
-  --color-danger: #dc2626;
-  --color-success: #16a34a;
-  --color-canvas: #f8fafc;
-  --color-subtle: #94a3b8;
-  --color-ink-soft: #e5e7eb;
+  /* Darker on hover, so the white text on it stays readable. */
+  --color-primary-pressed: #e2481b;
+  --color-ink: var(--c-ink);
+  --color-on-ink: var(--c-on-ink);
+  --color-page: var(--c-page);
+  --color-surface: var(--c-surface);
+  --color-field: var(--c-field);
+  --color-line: var(--c-line);
+  --color-text: var(--c-text);
+  --color-muted: var(--c-muted);
+  --color-danger: var(--c-danger);
+  --color-success: var(--c-success);
+  --color-canvas: var(--c-canvas);
+  --color-subtle: var(--c-subtle);
+  --color-ink-soft: var(--c-ink-soft);
+  /* An icon or label on a solid status color, like a red button. */
+  --color-on-status: var(--c-on-status);
+  --color-scrim: var(--c-scrim);
   /* Priority cards and due-date chips, as in the Android app. */
-  --color-danger-soft: #fee2e2;
-  --color-danger-deep: #991b1b;
-  --color-amber-soft: #fef3c7;
-  --color-amber-dark: #b45309;
-  --color-amber-deep: #92400e;
-  --color-sky-soft: #e0f2fe;
-  --color-sky-dark: #0369a1;
-  --color-sky-deep: #075985;
-  --color-sun-soft: #fef9c3;
-  --color-sun-dark: #a16207;
-  --color-accent-soft: #ffedd5;
-  --color-accent-dark: #c2410c;
+  --color-danger-soft: var(--c-danger-soft);
+  --color-danger-deep: var(--c-danger-deep);
+  --color-amber-soft: var(--c-amber-soft);
+  --color-amber-dark: var(--c-amber-dark);
+  --color-amber-deep: var(--c-amber-deep);
+  --color-sky-soft: var(--c-sky-soft);
+  --color-sky-dark: var(--c-sky-dark);
+  --color-sky-deep: var(--c-sky-deep);
+  --color-sun-soft: var(--c-sun-soft);
+  --color-sun-dark: var(--c-sun-dark);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-accent-dark: var(--c-accent-dark);
   --font-sans: var(--font-geist-sans);
+  /* Tighter corners than Tailwind's defaults, for the whole app: 3, 4, 5, 6, 8 and 10px. */
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.3125rem;
+  --radius-xl: 0.375rem;
+  --radius-2xl: 0.5rem;
+  --radius-3xl: 0.625rem;
 }
 
+/* Every gray has equal red, green and blue, so none of them leans toward a color. */
 :root {
   color-scheme: light;
+  --c-ink: #282828;
+  --c-on-ink: #ffffff;
+  --c-page: #ffffff;
+  --c-surface: #ffffff;
+  --c-field: #f4f4f4;
+  --c-line: #e7e7e7;
+  --c-text: #171717;
+  --c-muted: #737373;
+  --c-canvas: #fafafa;
+  --c-subtle: #a2a2a2;
+  --c-ink-soft: #e7e7e7;
+  --c-on-status: #ffffff;
+  --c-scrim: rgb(40 40 40 / 0.3);
+  --c-gutter: #bfbfbf;
+  --c-danger: #dc2626;
+  --c-success: #16a34a;
+  --c-danger-soft: #fee2e2;
+  --c-danger-deep: #991b1b;
+  --c-amber-soft: #fef3c7;
+  --c-amber-dark: #b45309;
+  --c-amber-deep: #92400e;
+  --c-sky-soft: #e0f2fe;
+  --c-sky-dark: #0369a1;
+  --c-sky-deep: #075985;
+  --c-sun-soft: #fef9c3;
+  --c-sun-dark: #a16207;
+  --c-accent-soft: #ffedd5;
+  --c-accent-dark: #c2410c;
+  /* Keeps the scrollbar's room, so a list getting shorter or longer never moves the page. */
+  scrollbar-gutter: stable;
+}
+
+/* The Android app's dark look, with its grays made fully neutral. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-ink: #f4f4f4;
+  --c-on-ink: #0e0e0e;
+  --c-page: #0e0e0e;
+  --c-surface: #151515;
+  --c-field: #282828;
+  --c-line: #282828;
+  --c-text: #f4f4f4;
+  --c-muted: #a2a2a2;
+  /* Between the surface and a field, so it shows on both the page and a modal. */
+  --c-canvas: #1c1c1c;
+  --c-subtle: #727272;
+  --c-ink-soft: #282828;
+  --c-on-status: #151515;
+  --c-scrim: rgb(0 0 0 / 0.6);
+  --c-gutter: #060606;
+  --c-danger: #f87171;
+  --c-success: #22c55e;
+  --c-danger-soft: #3a1d24;
+  --c-danger-deep: #fca5a5;
+  --c-amber-soft: #3a2c12;
+  --c-amber-dark: #fbbf24;
+  --c-amber-deep: #fcd34d;
+  --c-sky-soft: #0f2a3d;
+  --c-sky-dark: #38bdf8;
+  --c-sky-deep: #7dd3fc;
+  --c-sun-soft: #373113;
+  --c-sun-dark: #facc15;
+  --c-accent-soft: #3d2616;
+  --c-accent-dark: #fdba74;
+}
+
+/* That room sits outside a modal's backdrop, so it's tinted to match. */
+:root:has(dialog:modal) {
+  background: var(--c-gutter);
 }
 
 body {
-  background: #ffffff;
+  background: var(--c-page);
   color: var(--color-text);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Browsers draw a plain select's list in a system font. This draws it in the page, in Geist. */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  select {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  ::picker(select) {
+    margin-block: 4px;
+    padding: 6px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-xl);
+    background: var(--c-surface);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+    /* Long lists, like the 60 minutes, scroll with no bar. */
+    max-height: 240px;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  /* The due time's lists: four and a half rows, so the cut-off row shows there's more. */
+  select.short-list::picker(select) {
+    max-height: 164px;
+  }
+
+  option {
+    padding: 7px 10px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  option:hover,
+  option:focus-visible {
+    background: var(--color-field);
+    outline: none;
+  }
+
+  option:checked {
+    font-weight: 600;
+  }
+
+  /* A time that has already passed, in the reminder's lists. */
+  option:disabled,
+  option:disabled:hover {
+    background: transparent;
+    color: var(--color-subtle);
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  /* The browser's tick and arrow are text in a system font. Bold marks the picked one instead. */
+  option::checkmark {
+    display: none;
+  }
+
+  select::picker-icon {
+    content: "";
+    display: block;
+    width: 14px;
+    height: 14px;
+    background: var(--color-muted);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
 }
 
 /* The password field has its own eye button. */

@@ -69,7 +69,7 @@ export function RegisterForm() {
         </p>
         <Link
           href="/login"
-          className="mt-8 flex h-12 items-center justify-center rounded-xl bg-primary text-base font-semibold text-ink transition-colors hover:bg-primary-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          className="mt-8 flex h-12 items-center justify-center rounded-xl bg-primary text-base font-semibold text-white transition-colors hover:bg-primary-pressed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
         >
           Go to log in
         </Link>

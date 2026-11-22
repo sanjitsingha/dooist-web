@@ -25,7 +25,7 @@ export function AuthField({ label, secure = false, error, type = "text", ...inpu
       <label htmlFor={id} className="sr-only">
         {label}
       </label>
-      <div className="flex h-12 items-center rounded-xl border-[1.5px] border-transparent bg-field px-3.5 transition-colors focus-within:border-primary focus-within:bg-white">
+      <div className="flex h-12 items-center rounded-xl border-[1.5px] border-transparent bg-field px-3.5 transition-colors focus-within:border-primary focus-within:bg-surface">
         <input
           id={id}
           type={secure ? (hidden ? "password" : "text") : type}

@@ -1,6 +1,6 @@
 /** Date helpers, matching the Android app's src/lib/dates.ts so both apps read the same. */
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTHS_LONG = [
@@ -122,6 +122,95 @@ export function toDayMinutes(key: TimeKey): number {
 export function formatDueDateTime(key: DateKey, time: TimeKey | undefined, now: Date): string {
   const day = relativeDayLabel(key, now) ?? absoluteDayLabel(key, now);
   return time ? `${day}, ${formatTime(time)}` : day;
+}
+
+/** "Wed, 12 Nov" (year added if not this year), never "Today" or "Tomorrow". */
+export function formatShortDate(key: DateKey, now: Date): string {
+  return absoluteDayLabel(key, now);
+}
+
+/** "21 Nov · Today · Saturday", with the year if it isn't this year. */
+export function formatActivityDay(key: DateKey, now: Date): string {
+  const date = fromDateKey(key);
+  const year = date.getFullYear() === now.getFullYear() ? "" : ` ${date.getFullYear()}`;
+  const relative = relativeDayLabel(key, now);
+  return [
+    `${date.getDate()} ${MONTHS[date.getMonth()]}${year}`,
+    ...(relative ? [relative] : []),
+    WEEKDAYS_LONG[date.getDay()],
+  ].join(" · ");
+}
+
+export function startOfMonth(key: DateKey): DateKey {
+  return `${key.slice(0, 7)}-01`;
+}
+
+/** The 1st of the month `months` away. */
+export function addMonths(key: DateKey, months: number): DateKey {
+  const date = fromDateKey(key);
+  return toDateKey(new Date(date.getFullYear(), date.getMonth() + months, 1));
+}
+
+/** "November 2026" */
+export function formatMonthYear(key: DateKey): string {
+  const date = fromDateKey(key);
+  return `${MONTHS_LONG[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+/** "23 Nov". */
+export function formatDayMonth(key: DateKey): string {
+  const date = fromDateKey(key);
+  return `${date.getDate()} ${MONTHS[date.getMonth()]}`;
+}
+
+/** "23 – 28 Nov 2026", "29 Nov – 4 Dec 2026", or "28 Dec 2026 – 2 Jan 2027". */
+export function formatDayRange(from: DateKey, to: DateKey): string {
+  const start = fromDateKey(from);
+  const end = fromDateKey(to);
+  const last = `${formatDayMonth(to)} ${end.getFullYear()}`;
+  if (from === to) return last;
+  if (start.getFullYear() !== end.getFullYear()) {
+    return `${formatDayMonth(from)} ${start.getFullYear()} – ${last}`;
+  }
+  if (start.getMonth() !== end.getMonth()) return `${formatDayMonth(from)} – ${last}`;
+  return `${start.getDate()} – ${last}`;
+}
+
+/** A month as six weeks, Sunday first, with null for the cells outside it. */
+export function getMonthGrid(key: DateKey): (DateKey | null)[][] {
+  const first = fromDateKey(startOfMonth(key));
+  const year = first.getFullYear();
+  const month = first.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const offset = first.getDay();
+
+  return Array.from({ length: 6 }, (_, week) =>
+    Array.from({ length: 7 }, (_, weekday) => {
+      const day = week * 7 + weekday - offset + 1;
+      return day >= 1 && day <= daysInMonth ? toDateKey(new Date(year, month, day)) : null;
+    }),
+  );
+}
+
+export const MINUTES_PER_DAY = 24 * 60;
+
+/** Where a time picker starts: the current time, to the minute. */
+export function currentTime(now: Date): TimeKey {
+  return fromDayMinutes(now.getHours() * 60 + now.getMinutes());
+}
+
+/** The other way round from toDayMinutes: 972 is "16:12". */
+export function fromDayMinutes(total: number): TimeKey {
+  const hours = String(Math.floor(total / 60)).padStart(2, "0");
+  return `${hours}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/** The first minute a reminder can be set for on a day. MINUTES_PER_DAY means none are left. */
+export function earliestReminderMinute(dueDate: DateKey, now: Date): number {
+  const today = toDateKey(now);
+  if (dueDate > today) return 0;
+  if (dueDate < today) return MINUTES_PER_DAY;
+  return now.getHours() * 60 + now.getMinutes() + 1;
 }
 
 /** "45 min", "1 hr", "1 hr 30 min". */
