@@ -56,9 +56,13 @@ export const ACCOUNT_LINKS = [
 ] as const;
 
 /** The person's profile picture, or the first letter of their name if they don't have one. */
+/** The letter shown when there's no profile picture. */
+export const avatarInitial = (user: CurrentUser) =>
+  Array.from((user.name ?? user.email).trim())[0]?.toUpperCase() ?? "?";
+
 export function Avatar({ user, small = false }: { user: CurrentUser; small?: boolean }) {
   const [failed, setFailed] = useState(false);
-  const initial = Array.from((user.name ?? user.email).trim())[0]?.toUpperCase() ?? "?";
+  const initial = avatarInitial(user);
   const pixels = small ? 28 : 36;
   const box = small ? "size-7" : "size-9";
 

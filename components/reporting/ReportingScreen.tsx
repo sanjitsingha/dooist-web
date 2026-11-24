@@ -9,6 +9,7 @@ import { useApp } from "@/components/app/AppShell";
 import { PageHeader } from "@/components/app/PageHeader";
 import { TodoDetailsSheet } from "@/components/home/TodoSheets";
 import { ActionBadge, REPORT_TYPES } from "@/components/reporting/ActionBadge";
+import { DownloadReportButton } from "@/components/reporting/DownloadReportButton";
 import { Pagination } from "@/components/reporting/Pagination";
 import { ReportDateFilter } from "@/components/reporting/ReportDateFilter";
 import { ReportTypeFilter } from "@/components/reporting/ReportTypeFilter";
@@ -157,7 +158,7 @@ export function ReportingScreen() {
   const { user, today, todos, whenSaved, updateTodo, toggleTodo, deleteTodo } = useApp();
   const { events, status, retry } = useActivity(user.id, todos, whenSaved);
   const [types, setTypes] = useState<readonly ReportType[]>([]);
-  const [date, setDate] = useState<DateChoice>("any");
+  const [date, setDate] = useState<DateChoice>("today");
   const [openId, setOpenId] = useState<string | null>(null);
   const openable = useMemo(() => new Set(todos.map((todo) => todo.id)), [todos]);
   const detailsTodo = openId ? todos.find((todo) => todo.id === openId) : undefined;
@@ -181,6 +182,14 @@ export function ReportingScreen() {
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <ReportTypeFilter selected={types} onChange={setTypes} />
         <ReportDateFilter choice={date} today={today} onChange={setDate} />
+        <DownloadReportButton
+          events={shown}
+          types={types}
+          date={date}
+          today={today}
+          user={user}
+          disabled={status !== "ready" || shown.length === 0}
+        />
       </div>
 
       {status === "error" ? (

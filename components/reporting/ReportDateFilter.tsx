@@ -16,6 +16,13 @@ const RANGES = [
 
 const isExactDay = (choice: DateChoice) => choice.includes("-");
 
+/** "Any date", "Today", "This week", "This month", or the day, e.g. "Wed, 12 Nov". */
+export function dateChoiceSummary(choice: DateChoice, today: DateKey | null): string {
+  if (choice === "any") return "Any date";
+  if (isExactDay(choice)) return today ? formatShortDate(choice, fromDateKey(today)) : choice;
+  return RANGES.find((range) => range.value === choice)?.label ?? choice;
+}
+
 /** Which dates to report on. Picking the current choice again goes back to any date. */
 export function ReportDateFilter({
   choice,
@@ -31,14 +38,7 @@ export function ReportDateFilter({
   const [month, setMonth] = useState<DateKey | null>(null);
 
   const pickedDay = choice === "today" ? today : isExactDay(choice) ? choice : null;
-  const summary =
-    choice === "any"
-      ? "Any date"
-      : isExactDay(choice)
-        ? today
-          ? formatShortDate(choice, fromDateKey(today))
-          : choice
-        : RANGES.find((range) => range.value === choice)?.label;
+  const summary = dateChoiceSummary(choice, today);
 
   const pick = (next: DateChoice, close: () => void) => {
     onChange(next === choice ? "any" : next);
