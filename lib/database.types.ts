@@ -44,6 +44,24 @@ export type CalendarConnectionRow = {
   can_read_events: boolean;
 };
 
+/** The areas feedback can be about, the same as the Android app's Subject sheet. */
+export type FeedbackSubject =
+  | "bug"
+  | "idea"
+  | "todos"
+  | "calendar"
+  | "account"
+  | "design"
+  | "other";
+
+/** Send only, shared with the Android app: people can add feedback but not read it back. */
+export type FeedbackInsert = {
+  subject: FeedbackSubject;
+  message: string;
+  app_version: string | null;
+  platform: string | null;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -62,6 +80,12 @@ export type Database = {
       calendar_connections: {
         Row: CalendarConnectionRow;
         Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      feedback: {
+        Row: FeedbackInsert & { id: string; user_id: string | null; created_at: string };
+        Insert: FeedbackInsert;
         Update: never;
         Relationships: [];
       };

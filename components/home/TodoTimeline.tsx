@@ -2,6 +2,8 @@
 
 import {
   memo,
+  type MouseEvent,
+  type PointerEvent,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -12,7 +14,7 @@ import {
 } from "react";
 
 import { useNow } from "@/hooks/useNow";
-import { formatTime, toDateKey, toDayMinutes, type DateKey } from "@/lib/dates";
+import { formatTime, toDateKey, toDayMinutes, type DateKey, type TimeKey } from "@/lib/dates";
 import { priorityOf, type Todo } from "@/lib/todos";
 
 /** How tall an hour is: fully zoomed out, at first, and fully zoomed in. */
@@ -20,6 +22,26 @@ const MIN_HOUR_HEIGHT = 48;
 const DEFAULT_HOUR_HEIGHT = 64;
 const MAX_HOUR_HEIGHT = 240;
 export const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+
+/**
+ * The ticks between the hour labels, in the time column on the left like a ruler's, which fade in
+ * while zooming in, more of them the further in: half past from 80px an hour (fully there by
+ * 110px), quarter past and quarter to from 120px (by 160px), then every five minutes from 180px
+ * (by 230px). The closer together, the shorter and lighter, so the hours still stand out. They
+ * stay out of the todos' area. The Android timeline has the same ticks, up to quarter hours.
+ */
+const SUB_HOUR_TICKS = [
+  { step: 30, minutes: [30], width: 14, fadeFrom: 80, fadeTo: 110, opacity: 1 },
+  { step: 15, minutes: [15, 45], width: 9, fadeFrom: 120, fadeTo: 160, opacity: 0.8 },
+  {
+    step: 5,
+    minutes: [5, 10, 20, 25, 35, 40, 50, 55],
+    width: 5,
+    fadeFrom: 180,
+    fadeTo: 230,
+    opacity: 0.6,
+  },
+] as const;
 
 /** Room on the left for the time labels. */
 export const GUTTER_WIDTH = 56;
@@ -175,22 +197,28 @@ export function useTimelineZoom() {
 /**
  * The picked day like a calendar's day view: times down the left, each timed todo as a block
  * tinted by priority, untimed todos in an "All day" row, and a red line at the current time.
- * Zooms with a pinch or Ctrl + scroll (which is also how a trackpad pinch arrives).
+ * Zooms with a pinch or Ctrl + scroll (which is also how a trackpad pinch arrives). With
+ * `onAddAt`, a short orange line in the time column follows the mouse, snapped to the ticks, and
+ * a click adds a todo there.
  */
 export function TodoTimeline({
   todos,
   date,
   onOpen,
+  onAddAt,
 }: {
   todos: readonly Todo[];
   date: DateKey;
   onOpen: (todo: Todo) => void;
+  /** Adds a todo at a time clicked on the timeline. Left out on days gone by. */
+  onAddAt?: (date: DateKey, time: TimeKey) => void;
 }) {
   const now = useNow();
   const isToday = date === toDateKey(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
   const { scroller, hourHeight, scrollToMinutes } = useTimelineZoom();
+  const { slot, hide, handlers } = useSlotHover(hourHeight, () => date, onAddAt);
   const [contentHeights, setContentHeights] = useState<Record<string, number>>({});
 
   const measureBlock = useCallback((id: string, height: number) => {
@@ -260,12 +288,18 @@ export function TodoTimeline({
       <div className="relative min-h-0 flex-1">
         <div
           ref={scroller}
+          onScroll={hide}
           role="region"
           aria-label="Timeline"
           tabIndex={0}
           className="absolute inset-0 touch-pan-y overflow-y-auto overscroll-y-contain [scrollbar-width:none] focus-visible:outline-2 [&::-webkit-scrollbar]:hidden focus-visible:-outline-offset-2 focus-visible:outline-ink"
         >
-          <div className="relative" style={{ height: gridHeight + GRID_BOTTOM }}>
+          <div
+            {...handlers}
+            className={`relative ${slot ? "cursor-pointer" : ""}`}
+            style={{ height: gridHeight + GRID_BOTTOM }}
+          >
+            <SubHourLines hourHeight={hourHeight} />
             {HOURS.map((hour) => (
               <HourRow key={hour} hour={hour} top={offsetOf(hour * 60, hourHeight) - 8} />
             ))}
@@ -284,6 +318,8 @@ export function TodoTimeline({
                 <TimelineChip todo={todo} onOpen={onOpen} onMeasure={measureBlock} showTime fill />
               </div>
             ))}
+
+            {slot ? <SlotMark minutes={slot.minutes} hourHeight={hourHeight} /> : null}
 
             {isToday ? (
               <div
@@ -314,6 +350,123 @@ export const HourRow = memo(function HourRow({ hour, top }: { hour: number; top:
       <span className="h-px flex-1 bg-line" />
     </div>
   );
+});
+
+/**
+ * How far apart the times are that the mouse snaps to: the closest ticks showing (once they're
+ * half faded in), or whole hours before any do. 60, 30, 15 or 5 minutes.
+ */
+function snapMinutes(hourHeight: number): number {
+  let snap = 60;
+  for (const { step, fadeFrom, fadeTo } of SUB_HOUR_TICKS) {
+    if (hourHeight >= (fadeFrom + fadeTo) / 2) snap = Math.min(snap, step);
+  }
+  return snap;
+}
+
+/** A time of day the mouse is over, on a day, snapped to the ticks. */
+export type Slot = { date: DateKey; minutes: number };
+
+const toTimeKey = (minutes: number): TimeKey =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+/**
+ * The mouse over a timeline's empty space: which day and time it's on, snapped to the ticks
+ * showing, for a mark there (SlotMark); clicking adds a todo then. Hand the handlers to
+ * the grid; `dayAt` says which day a spot is on (null where nothing can be added, like the time
+ * column of a grid of days). Only for a mouse: a finger scrolls and pinches the timeline, and
+ * todos are opened as usual.
+ */
+export function useSlotHover(
+  hourHeight: number,
+  dayAt: (target: Element) => DateKey | null,
+  onAddAt: ((date: DateKey, time: TimeKey) => void) | undefined,
+) {
+  const [slot, setSlot] = useState<Slot | null>(null);
+
+  const slotAt = (event: PointerEvent<HTMLElement> | MouseEvent<HTMLElement>): Slot | null => {
+    if (!onAddAt || !(event.target instanceof Element)) return null;
+    // A todo opens its details instead.
+    if (event.target.closest("button")) return null;
+    const date = dayAt(event.target);
+    if (!date) return null;
+    const step = snapMinutes(hourHeight);
+    const y = event.clientY - event.currentTarget.getBoundingClientRect().top;
+    const minutes = Math.round((((y - GRID_TOP) / hourHeight) * 60) / step) * step;
+    return { date, minutes: clamp(minutes, 0, 24 * 60 - step) };
+  };
+
+  const same = (a: Slot | null, b: Slot | null) =>
+    a === b || (a !== null && b !== null && a.date === b.date && a.minutes === b.minutes);
+
+  return {
+    slot,
+    /** For the scrolling element: the line would be left behind, so it goes until the next move. */
+    hide: useCallback(() => setSlot(null), []),
+    handlers: {
+      onPointerMove: (event: PointerEvent<HTMLElement>) => {
+        if (event.pointerType !== "mouse") return;
+        const next = slotAt(event);
+        setSlot((current) => (same(current, next) ? current : next));
+      },
+      onPointerLeave: () => setSlot(null),
+      onClick: (event: MouseEvent<HTMLElement>) => {
+        const picked = slotAt(event);
+        if (!picked || !onAddAt) return;
+        setSlot(null);
+        onAddAt(picked.date, toTimeKey(picked.minutes));
+      },
+    },
+  };
+}
+
+/** How long the orange mark is: longer than the half-hour ticks, so it stands out from them. */
+const SLOT_MARK_WIDTH = 20;
+
+/**
+ * Where the mouse would add a todo: a short orange line in the time column, at the right edge
+ * where the ticks are, on the snapped time. Nothing is drawn over the todos.
+ */
+export function SlotMark({ minutes, hourHeight }: { minutes: number; hourHeight: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute z-10 h-0.5 rounded-full bg-primary"
+      style={{
+        left: GUTTER_WIDTH - SLOT_MARK_WIDTH,
+        width: SLOT_MARK_WIDTH,
+        top: offsetOf(minutes, hourHeight) - 1,
+      }}
+    />
+  );
+}
+
+/**
+ * The ticks between the hour labels (half and quarter hours, then every five minutes), at the
+ * right edge of the time column where the hour lines start, each fading in as zooming in gives
+ * the hours room for it, and out again when zooming out. Ticks that are fully faded out aren't
+ * drawn.
+ */
+export const SubHourLines = memo(function SubHourLines({ hourHeight }: { hourHeight: number }) {
+  return SUB_HOUR_TICKS.map(({ minutes, width, fadeFrom, fadeTo, opacity }) => {
+    const shown = clamp((hourHeight - fadeFrom) / (fadeTo - fadeFrom), 0, 1) * opacity;
+    if (shown === 0) return null;
+    return HOURS.map((hour) =>
+      minutes.map((minute) => (
+        <span
+          key={`${hour}:${minute}`}
+          aria-hidden="true"
+          className="absolute h-px bg-line"
+          style={{
+            left: GUTTER_WIDTH - width,
+            width,
+            top: offsetOf(hour * 60 + minute, hourHeight),
+            opacity: shown,
+          }}
+        />
+      )),
+    );
+  });
 });
 
 /** One todo: a box tinted by priority with its title in full. Done todos are gray. */

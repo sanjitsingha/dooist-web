@@ -102,7 +102,7 @@ function UpcomingList({
 
 /** Every open todo due after today, soonest first, under its date. Today has its own page. */
 export function UpcomingScreen() {
-  const { today, todos, status, retry, updateTodo, toggleTodo, deleteTodo } = useApp();
+  const { today, todos, status, retry, updateTodo, toggleTodo, deleteTodo, openAddAt } = useApp();
   const [openId, setOpenId] = useState<string | null>(null);
   const detailsTodo = openId ? todos.find((todo) => todo.id === openId) : undefined;
   const { view, toggle: toggleView } = useUpcomingView();
@@ -145,7 +145,12 @@ export function UpcomingScreen() {
       </div>
 
       {isGrid && status === "ready" && today ? (
-        <UpcomingCalendar todos={upcoming} today={today} onOpen={(todo) => setOpenId(todo.id)} />
+        <UpcomingCalendar
+          todos={upcoming}
+          today={today}
+          onOpen={(todo) => setOpenId(todo.id)}
+          onAddAt={openAddAt}
+        />
       ) : (
         <div className={PAGE_COLUMN}>
           {status === "error" ? (

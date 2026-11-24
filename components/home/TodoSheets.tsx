@@ -35,6 +35,7 @@ import {
   formatTime,
   fromDateKey,
   type DateKey,
+  type TimeKey,
 } from "@/lib/dates";
 import {
   PRIORITIES,
@@ -300,11 +301,14 @@ function ProblemLine({ message }: { message: string | null }) {
 export function AddTodoSheet({
   today,
   startDate,
+  startTime,
   onAdd,
   onClose,
 }: {
   today: DateKey;
   startDate: DateKey;
+  /** A time to start with, like one clicked on the timeline. */
+  startTime?: TimeKey;
   onAdd: (todo: NewTodo) => void;
   onClose: () => void;
 }) {
@@ -313,7 +317,7 @@ export function AddTodoSheet({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState(startDate < today ? today : startDate);
-  const [dueTime, setDueTime] = useState("");
+  const [dueTime, setDueTime] = useState(startTime ?? "");
   const [priority, setPriority] = useState<Priority>("medium");
   const [duration, setDuration] = useState("");
   const [reminder, setReminder] = useState("");

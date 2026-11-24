@@ -15,7 +15,7 @@ import { useBrowserNotifications } from "@/hooks/useBrowserNotifications";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useToday } from "@/hooks/useToday";
 import { useTodos } from "@/hooks/useTodos";
-import type { DateKey } from "@/lib/dates";
+import type { DateKey, TimeKey } from "@/lib/dates";
 import type { CurrentUser } from "@/lib/session";
 
 type AppValue = ReturnType<typeof useTodos> & {
@@ -25,7 +25,12 @@ type AppValue = ReturnType<typeof useTodos> & {
   selected: DateKey | null;
   /** Picks a day. Null goes back to following today. */
   selectDate: (date: DateKey | null) => void;
+  /** Opens Add todo on this day, at this time (a slot clicked on a timeline). */
+  openAddAt: (date: DateKey, time: TimeKey) => void;
 };
+
+/** Add todo, while it's open: on the picked day, or on a day and time clicked on a timeline. */
+type Adding = { date: DateKey | null; time?: TimeKey };
 
 const AppContext = createContext<AppValue | null>(null);
 
@@ -52,7 +57,7 @@ export function AppShell({
   const todos = useTodos(user.id);
   // Until a day is picked, it follows today, including past midnight.
   const [picked, setPicked] = useState<DateKey | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<Adding | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -62,13 +67,14 @@ export function AppShell({
   const [accountError, setAccountError] = useState<string | null>(null);
 
   const selected = picked ?? today;
+  const openAddAt = useCallback((date: DateKey, time: TimeKey) => setAdding({ date, time }), []);
   const value = useMemo(
-    () => ({ ...todos, user, today, selected, selectDate: setPicked }),
-    [todos, user, today, selected],
+    () => ({ ...todos, user, today, selected, selectDate: setPicked, openAddAt }),
+    [todos, user, today, selected, openAddAt],
   );
 
   const { addTodo, saveError, clearSaveError } = todos;
-  const openAdd = useCallback(() => setAdding(true), []);
+  const openAdd = useCallback(() => setAdding({ date: null }), []);
   const openAccount = () => setAccountOpen(true);
   const openNotifications = useCallback(() => {
     setAccountOpen(false);
@@ -110,13 +116,14 @@ export function AppShell({
         {adding && today && selected ? (
           <AddTodoSheet
             today={today}
-            startDate={selected}
-            onClose={() => setAdding(false)}
+            startDate={adding.date ?? selected}
+            startTime={adding.time}
+            onClose={() => setAdding(null)}
             onAdd={(todo) => {
               addTodo(todo);
               // Show the todo's day, so the new todo is visible on Today right away.
               setPicked(todo.dueDate === today ? null : todo.dueDate);
-              setAdding(false);
+              setAdding(null);
             }}
           />
         ) : null}
@@ -154,6 +161,7 @@ export function AppShell({
             appearance={appearance}
             onAppearanceChange={setAppearance}
             whenSaved={todos.whenSaved}
+            version={version}
             onClose={() => setSettingsOpen(false)}
           />
         ) : null}

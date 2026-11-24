@@ -18,9 +18,12 @@ import {
   HOURS,
   HourRow,
   ONE_LINE_HEIGHT,
+  SlotMark,
+  SubHourLines,
   TimelineChip,
   layoutBlocks,
   offsetOf,
+  useSlotHover,
   useTimelineZoom,
 } from "@/components/home/TodoTimeline";
 import {
@@ -32,6 +35,7 @@ import {
   toDateKey,
   toDayMinutes,
   type DateKey,
+  type TimeKey,
 } from "@/lib/dates";
 import type { Todo } from "@/lib/todos";
 
@@ -55,13 +59,22 @@ export function UpcomingCalendar({
   todos,
   today,
   onOpen,
+  onAddAt,
 }: {
   todos: readonly Todo[];
   today: DateKey;
   onOpen: (todo: Todo) => void;
+  /** Adds a todo at a day and time clicked on the grid. */
+  onAddAt?: (date: DateKey, time: TimeKey) => void;
 }) {
   const frame = useRef<HTMLDivElement>(null);
   const { scroller, hourHeight, scrollToMinutes } = useTimelineZoom();
+  // The day is the column the mouse is over; the time column has none.
+  const { slot, hide, handlers } = useSlotHover(
+    hourHeight,
+    (target) => target.closest<HTMLElement>("[data-day]")?.dataset.day ?? null,
+    onAddAt,
+  );
   const [dayCount, setDayCount] = useState(5);
   /** How many days past tomorrow the first column is. */
   const [offset, setOffset] = useState(0);
@@ -225,12 +238,19 @@ export function UpcomingCalendar({
           <div className="relative min-h-0 flex-1">
             <div
               ref={scroller}
+              onScroll={hide}
               role="region"
               aria-label="Upcoming days"
               tabIndex={0}
               className={`absolute inset-0 touch-pan-y overflow-y-auto overscroll-y-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${FOCUS}`}
             >
-              <div className="relative" style={{ height: gridHeight + GRID_BOTTOM }}>
+              <div
+                {...handlers}
+                className={`relative ${slot ? "cursor-pointer" : ""}`}
+                style={{ height: gridHeight + GRID_BOTTOM }}
+              >
+                <SubHourLines hourHeight={hourHeight} />
+                {slot ? <SlotMark minutes={slot.minutes} hourHeight={hourHeight} /> : null}
                 {HOURS.map((hour) => (
                   <HourRow key={hour} hour={hour} top={offsetOf(hour * 60, hourHeight) - 8} />
                 ))}
@@ -242,6 +262,7 @@ export function UpcomingCalendar({
                   {columns.map(({ day, timed, blocks }) => (
                     <section
                       key={day}
+                      data-day={day}
                       aria-label={formatDayMonth(day)}
                       className="relative min-w-0 border-l border-line"
                     >

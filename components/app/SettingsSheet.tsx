@@ -5,13 +5,16 @@ import {
   Blocks,
   Bot,
   CalendarSync,
+  Check,
+  ChevronDown,
   LoaderCircle,
+  MessageSquareText,
   Moon,
   Sun,
   SunMoon,
   type LucideIcon,
 } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type ToggleEvent } from "react";
 
 import { OverflowMenu } from "@/components/app/OverflowMenu";
 import { SwitchTrack } from "@/components/app/SwitchTrack";
@@ -23,17 +26,20 @@ import {
   useNotificationSettings,
   type BrowserPermission,
 } from "@/hooks/useNotificationSettings";
+import type { FeedbackSubject } from "@/lib/database.types";
+import { FEEDBACK_SUBJECTS, MAX_FEEDBACK_LENGTH, sendFeedback } from "@/lib/feedback";
 import type { NotificationKind } from "@/lib/notifications";
 import type { CurrentUser } from "@/lib/session";
 import type { Appearance } from "@/lib/theme";
 
-type Section = "appearance" | "notifications" | "calendar" | "integrations";
+type Section = "appearance" | "notifications" | "calendar" | "integrations" | "feedback";
 
 const SECTIONS: readonly { id: Section; label: string; icon: LucideIcon }[] = [
   { id: "appearance", label: "Appearance", icon: SunMoon },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "calendar", label: "Calendar", icon: CalendarSync },
   { id: "integrations", label: "Integrations", icon: Blocks },
+  { id: "feedback", label: "Feedback", icon: MessageSquareText },
 ];
 
 const LOOKS: readonly { value: Appearance; label: string; icon: LucideIcon }[] = [
@@ -433,12 +439,228 @@ function IntegrationsPane() {
   );
 }
 
+const SUBJECT_ITEM_HEIGHT = 44;
+/** The subject menu's padding and border, top and bottom together. */
+const SUBJECT_MENU_CHROME = 14;
+const MENU_GAP = 4;
+const SCREEN_MARGIN = 16;
+
+/**
+ * The Subject field: the chosen subject on an underline, as in the Android app, opening a menu of
+ * the subjects as wide as the field (above it when there isn't room below). A browser popover, like
+ * the ⋮ menu, so the modal's edges don't cut it off.
+ */
+function SubjectPicker({
+  value,
+  onChange,
+}: {
+  value: FeedbackSubject | null;
+  onChange: (next: FeedbackSubject) => void;
+}) {
+  const menuId = useId();
+  const labelId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const chosen = FEEDBACK_SUBJECTS.find((subject) => subject.value === value);
+
+  // Placed once on opening, so moving the page away from it closes it.
+  useEffect(() => {
+    if (!open) return;
+    const close = () => menu.current?.hidePopover();
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+
+  const place = (event: ToggleEvent<HTMLDivElement>) => {
+    if (event.newState !== "open" || !trigger.current) return;
+    const box = trigger.current.getBoundingClientRect();
+    const height = FEEDBACK_SUBJECTS.length * SUBJECT_ITEM_HEIGHT + SUBJECT_MENU_CHROME;
+    const opensUp =
+      box.bottom + MENU_GAP + height > window.innerHeight - SCREEN_MARGIN &&
+      box.top - MENU_GAP - height >= SCREEN_MARGIN;
+    const { style } = event.currentTarget;
+    style.width = `${box.width}px`;
+    style.left = `${box.left}px`;
+    style.top = `${opensUp ? box.top - MENU_GAP - height : box.bottom + MENU_GAP}px`;
+  };
+
+  const ChosenIcon = chosen?.icon;
+
+  return (
+    <div>
+      <span id={labelId} className="mb-1 block text-sm font-semibold text-text">
+        Subject
+      </span>
+      <button
+        ref={trigger}
+        type="button"
+        popoverTarget={menuId}
+        aria-label={`Subject: ${chosen?.label ?? "Choose a subject"}`}
+        aria-expanded={open}
+        aria-controls={menuId}
+        className={`flex h-12 w-full cursor-pointer items-center gap-2.5 border-b-[1.5px] text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
+          open ? "border-primary" : "border-line hover:border-subtle"
+        }`}
+      >
+        {ChosenIcon ? <ChosenIcon aria-hidden="true" className="size-5 shrink-0 text-ink" /> : null}
+        <span className={`min-w-0 flex-1 truncate text-base ${chosen ? "text-text" : "text-subtle"}`}>
+          {chosen?.label ?? "Choose a subject"}
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={`size-[18px] shrink-0 text-muted transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      <div
+        ref={menu}
+        id={menuId}
+        popover="auto"
+        role="listbox"
+        aria-labelledby={labelId}
+        onBeforeToggle={place}
+        onToggle={(event) => setOpen(event.newState === "open")}
+        className="fixed inset-auto m-0 rounded-xl border border-line bg-surface py-1.5 text-text shadow-lg"
+      >
+        {FEEDBACK_SUBJECTS.map(({ value: subject, label, icon: Icon }) => {
+          const selected = subject === value;
+          return (
+            <button
+              key={subject}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              onClick={() => {
+                menu.current?.hidePopover();
+                onChange(subject);
+                trigger.current?.focus();
+              }}
+              className="flex h-11 w-full cursor-pointer items-center gap-3 px-4 text-left text-[15px] text-text transition-colors hover:bg-field focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink"
+            >
+              <Icon aria-hidden="true" className="size-[18px] shrink-0 text-ink" />
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+              {selected ? <Check aria-hidden="true" className="size-[18px] shrink-0 text-ink" /> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Android app's Feedback page: a Subject, a message, and Send feedback. It's saved to the
+ * same `feedback` table as the app's, marked as from the web.
+ */
+function FeedbackPane({ version }: { version: string }) {
+  const messageId = useId();
+  const [subject, setSubject] = useState<FeedbackSubject | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  const canSend = subject !== null && message.trim().length > 0;
+
+  const send = async () => {
+    if (!subject || !canSend || busy) return;
+    setBusy(true);
+    setError(null);
+    setSent(false);
+    const problem = await sendFeedback(subject, message, version);
+    setBusy(false);
+    // What they wrote stays put, so they can try again.
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setSubject(null);
+    setMessage("");
+    setSent(true);
+  };
+
+  return (
+    <Pane title="Feedback">
+      {sent ? (
+        <p role="status" className="mt-2 rounded-xl bg-canvas p-3 text-sm leading-5 text-success">
+          Thanks for your feedback. It helps make Dooist better.
+        </p>
+      ) : null}
+
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void send();
+        }}
+        className="mt-4 flex flex-col gap-5"
+      >
+        <SubjectPicker
+          value={subject}
+          onChange={(next) => {
+            setSubject(next);
+            setSent(false);
+          }}
+        />
+
+        <div>
+          <label htmlFor={messageId} className="mb-2 block text-sm font-semibold text-text">
+            Message
+          </label>
+          {/* As in the Android app: white, outlined in gray, Dooist orange while typing. */}
+          <textarea
+            id={messageId}
+            value={message}
+            onChange={(event) => {
+              setMessage(event.target.value);
+              setSent(false);
+            }}
+            placeholder="Write your feedback"
+            maxLength={MAX_FEEDBACK_LENGTH}
+            rows={6}
+            className="block min-h-40 w-full resize-y rounded-xl border-[1.5px] border-line bg-surface p-3.5 text-base leading-[22px] text-text outline-none transition-colors placeholder:text-subtle focus:border-primary"
+          />
+          {/* Only once it's getting close to the limit. */}
+          {message.length > MAX_FEEDBACK_LENGTH * 0.8 ? (
+            <p className="mt-1.5 text-right text-[13px] text-muted">
+              {message.length} / {MAX_FEEDBACK_LENGTH}
+            </p>
+          ) : null}
+        </div>
+
+        <ErrorMessage message={error} />
+        <button
+          type="submit"
+          disabled={!canSend || busy}
+          aria-busy={busy}
+          className={`${BUTTON} h-12 w-full bg-primary text-base text-white enabled:hover:bg-primary-pressed`}
+        >
+          {busy ? (
+            <LoaderCircle aria-hidden="true" className="size-5 animate-spin" />
+          ) : (
+            "Send feedback"
+          )}
+        </button>
+
+        <p className="text-sm leading-5 text-muted">
+          Tell us what’s working, what isn’t, or what you’d like to see next.
+        </p>
+      </form>
+    </Pane>
+  );
+}
+
 /** Settings in a modal: its own side nav on the left (tabs on phones), the section on the right. */
 export function SettingsSheet({
   user,
   appearance,
   onAppearanceChange,
   whenSaved,
+  version,
   onClose,
 }: {
   user: CurrentUser;
@@ -446,6 +668,8 @@ export function SettingsSheet({
   onAppearanceChange: (next: Appearance) => Promise<string | null>;
   /** Resolves once this browser's todo changes have reached the account. */
   whenSaved: () => Promise<void>;
+  /** The web app's version, sent with feedback. */
+  version: string;
   onClose: () => void;
 }) {
   const [section, setSection] = useState<Section>("appearance");
@@ -494,6 +718,7 @@ export function SettingsSheet({
           {section === "notifications" ? <NotificationsPane user={user} /> : null}
           {section === "calendar" ? <CalendarPane user={user} whenSaved={whenSaved} /> : null}
           {section === "integrations" ? <IntegrationsPane /> : null}
+          {section === "feedback" ? <FeedbackPane version={version} /> : null}
         </section>
       </div>
     </Sheet>

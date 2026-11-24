@@ -25,8 +25,18 @@ const TIMELINE_PAGE =
 
 /** The Today screen: the picked day's todos, the web version of the Android Todo tab. */
 export function HomeScreen() {
-  const { today, selected, selectDate, todos, status, retry, updateTodo, toggleTodo, deleteTodo } =
-    useApp();
+  const {
+    today,
+    selected,
+    selectDate,
+    todos,
+    status,
+    retry,
+    updateTodo,
+    toggleTodo,
+    deleteTodo,
+    openAddAt,
+  } = useApp();
   const { view, toggle: toggleView } = useTodoView();
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -73,7 +83,13 @@ export function HomeScreen() {
           ) : status === "error" ? (
             <LoadError onRetry={retry} />
           ) : showTimeline ? (
-            <TodoTimeline todos={dayTodos} date={selected} onOpen={openDetails} />
+            <TodoTimeline
+              todos={dayTodos}
+              date={selected}
+              onOpen={openDetails}
+              // Todos can't be added to days gone by.
+              onAddAt={today && selected >= today ? openAddAt : undefined}
+            />
           ) : pending.length === 0 && completed.length === 0 ? (
             <EmptyDay date={selected} now={fromDateKey(today)} />
           ) : (
