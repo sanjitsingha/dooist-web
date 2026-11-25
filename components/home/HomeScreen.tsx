@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, GalleryVertical, ListTodo, Rows3 } from "lucide-react";
+import { ChevronDown, GalleryVertical, ListChecks, ListTodo, Rows3 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useApp } from "@/components/app/AppShell";
@@ -9,6 +9,7 @@ import { TodoCard } from "@/components/home/TodoCard";
 import { TodoListSkeleton } from "@/components/home/TodoListSkeleton";
 import { TodoDetailsSheet } from "@/components/home/TodoSheets";
 import { TodoTimeline } from "@/components/home/TodoTimeline";
+import { useHideCompleted } from "@/hooks/useHideCompleted";
 import { useTodoView } from "@/hooks/useTodoView";
 import {
   formatDayPhrase,
@@ -17,7 +18,7 @@ import {
   headerMonth,
   type DateKey,
 } from "@/lib/dates";
-import { compareTodos, type Todo } from "@/lib/todos";
+import { changeTime, compareTodos, type Todo } from "@/lib/todos";
 
 /** In the timeline, the page fits the window and only the hours scroll. */
 const TIMELINE_PAGE =
@@ -38,6 +39,7 @@ export function HomeScreen() {
     openAddAt,
   } = useApp();
   const { view, toggle: toggleView } = useTodoView();
+  const { hideCompleted } = useHideCompleted();
   const [openId, setOpenId] = useState<string | null>(null);
 
   const { pending, completed } = useMemo(() => {
@@ -47,10 +49,15 @@ export function HomeScreen() {
       completed: day.filter((todo) => todo.completed),
     };
   }, [todos, selected]);
+  // Settings › General can leave the done ones out.
+  const shownCompleted = hideCompleted ? [] : completed;
 
   const openDetails = (todo: Todo) => setOpenId(todo.id);
   const detailsTodo = openId ? todos.find((todo) => todo.id === openId) : undefined;
-  const dayTodos = useMemo(() => [...pending, ...completed], [pending, completed]);
+  const dayTodos = useMemo(
+    () => (hideCompleted ? pending : [...pending, ...completed]),
+    [pending, completed, hideCompleted],
+  );
   const showTimeline = view === "timeline" && status === "ready" && Boolean(today && selected);
 
   return (
@@ -87,11 +94,20 @@ export function HomeScreen() {
               todos={dayTodos}
               date={selected}
               onOpen={openDetails}
-              // Todos can't be added to days gone by.
+              // Todos can't be added to days gone by, or moved around on them.
               onAddAt={today && selected >= today ? openAddAt : undefined}
+              onMove={
+                today && selected >= today
+                  ? (todo, time) => updateTodo(todo.id, changeTime(todo, time))
+                  : undefined
+              }
             />
-          ) : pending.length === 0 && completed.length === 0 ? (
-            <EmptyDay date={selected} now={fromDateKey(today)} />
+          ) : pending.length === 0 && shownCompleted.length === 0 ? (
+            <EmptyDay
+              date={selected}
+              now={fromDateKey(today)}
+              hiddenCompleted={hideCompleted ? completed.length : 0}
+            />
           ) : (
             <div className="pt-3">
               {pending.map((todo) => (
@@ -103,9 +119,9 @@ export function HomeScreen() {
                   onToggle={toggleTodo}
                 />
               ))}
-              {completed.length > 0 ? (
+              {shownCompleted.length > 0 ? (
                 <CompletedSection
-                  todos={completed}
+                  todos={shownCompleted}
                   now={fromDateKey(today)}
                   onOpen={openDetails}
                   onToggle={toggleTodo}
@@ -227,7 +243,29 @@ function CompletedSection({
   );
 }
 
-function EmptyDay({ date, now }: { date: DateKey; now: Date }) {
+function EmptyDay({
+  date,
+  now,
+  hiddenCompleted,
+}: {
+  date: DateKey;
+  now: Date;
+  /** How many done todos are on this day but hidden by Hide completed todos. */
+  hiddenCompleted: number;
+}) {
+  if (hiddenCompleted > 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-6 py-20 text-center">
+        <ListChecks aria-hidden="true" strokeWidth={1.5} className="size-12 text-subtle" />
+        <h2 className="mt-2 text-xl font-semibold text-text">All done</h2>
+        <p className="text-[15px] text-muted">
+          Everything due {formatDayPhrase(date, now)} is done.{" "}
+          {hiddenCompleted === 1 ? "1 completed todo is" : `${hiddenCompleted} completed todos are`}{" "}
+          hidden. To show them, turn off Hide completed todos in Settings, under General.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center gap-2 px-6 py-20 text-center">
       <ListTodo aria-hidden="true" strokeWidth={1.5} className="size-12 text-subtle" />

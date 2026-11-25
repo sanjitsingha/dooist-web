@@ -161,6 +161,7 @@ export function AppShell({
             appearance={appearance}
             onAppearanceChange={setAppearance}
             whenSaved={todos.whenSaved}
+            onRestoreTodo={todos.restoreTodo}
             version={version}
             onClose={() => setSettingsOpen(false)}
           />

@@ -246,8 +246,8 @@ export default function PrivacyPolicyPage() {
           <p>
             We do not sell your information, use it for advertising, or build advertising profiles.
             We do not share your todos with ChatGPT or any other AI service, and we do not use them
-            to train AI models. “Connect ChatGPT” is shown in the app as a future feature and does
-            not send any data today. If we add it, it will be optional and we will update this
+            to train AI models. ChatGPT is listed under Integrations in the app as a future feature
+            and does not send any data today. If we add it, it will be optional and we will update this
             policy first.
           </p>
         </Section>

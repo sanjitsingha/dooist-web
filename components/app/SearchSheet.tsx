@@ -4,6 +4,7 @@ import {
   Bell,
   Circle,
   CircleCheck,
+  EyeOff,
   ListTodo,
   Megaphone,
   Moon,
@@ -32,6 +33,7 @@ import { TodoDetailsSheet } from "@/components/home/TodoSheets";
 import { Sheet } from "@/components/home/Sheet";
 import { Pagination } from "@/components/reporting/Pagination";
 import { useIsDark } from "@/hooks/useAppearance";
+import { useHideCompleted } from "@/hooks/useHideCompleted";
 import { useNotificationSettings } from "@/hooks/useNotificationSettings";
 import { fromDateKey, type DateKey } from "@/lib/dates";
 import type { NotificationKind } from "@/lib/notifications";
@@ -230,6 +232,7 @@ export function SearchSheet({
   const [paging, setPaging] = useState({ search: "", page: 1 });
   const isDark = useIsDark();
   const { settings, setKind } = useNotificationSettings(user.id);
+  const { hideCompleted, setHideCompleted } = useHideCompleted();
 
   useEffect(() => input.current?.focus(), []);
 
@@ -269,6 +272,15 @@ export function SearchSheet({
       icon: Moon,
       checked: isDark,
       toggle: () => void toggleDark(),
+    },
+    {
+      id: "hideCompleted",
+      type: "switch",
+      label: "Hide completed todos",
+      keywords: "general done finished today",
+      icon: EyeOff,
+      checked: hideCompleted,
+      toggle: () => setHideCompleted(!hideCompleted),
     },
     ...NOTIFICATION_KINDS.map(
       ({ kind, title }): Item => ({

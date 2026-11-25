@@ -3,13 +3,14 @@
 import {
   Bell,
   Blocks,
-  Bot,
   CalendarSync,
   Check,
   ChevronDown,
   LoaderCircle,
   MessageSquareText,
   Moon,
+  RotateCcw,
+  Settings2,
   Sun,
   SunMoon,
   type LucideIcon,
@@ -20,21 +21,34 @@ import { OverflowMenu } from "@/components/app/OverflowMenu";
 import { SwitchTrack } from "@/components/app/SwitchTrack";
 import { ErrorMessage } from "@/components/auth/AuthButtons";
 import { Sheet } from "@/components/home/Sheet";
+import { Pagination } from "@/components/reporting/Pagination";
 import { useCalendarConnection, type CalendarProblem } from "@/hooks/useCalendarConnection";
+import { useHideCompleted } from "@/hooks/useHideCompleted";
 import {
   useNotificationPermission,
   useNotificationSettings,
   type BrowserPermission,
 } from "@/hooks/useNotificationSettings";
+import { useNow } from "@/hooks/useNow";
+import { RECENTLY_DELETED_DAYS, useRecentlyDeleted } from "@/hooks/useRecentlyDeleted";
 import type { FeedbackSubject } from "@/lib/database.types";
+import { formatDayPhrase, formatDueDateTime, fromDateKey, toDateKey } from "@/lib/dates";
 import { FEEDBACK_SUBJECTS, MAX_FEEDBACK_LENGTH, sendFeedback } from "@/lib/feedback";
 import type { NotificationKind } from "@/lib/notifications";
 import type { CurrentUser } from "@/lib/session";
 import type { Appearance } from "@/lib/theme";
+import type { Todo } from "@/lib/todos";
 
-type Section = "appearance" | "notifications" | "calendar" | "integrations" | "feedback";
+type Section =
+  | "general"
+  | "appearance"
+  | "notifications"
+  | "calendar"
+  | "integrations"
+  | "feedback";
 
 const SECTIONS: readonly { id: Section; label: string; icon: LucideIcon }[] = [
+  { id: "general", label: "General", icon: Settings2 },
   { id: "appearance", label: "Appearance", icon: SunMoon },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "calendar", label: "Calendar", icon: CalendarSync },
@@ -200,6 +214,157 @@ function SwitchRow({
         className="peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink"
       />
     </label>
+  );
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+/** Only a few deleted todos at a time, so the list stays short inside Settings. */
+const DELETED_PAGE_SIZE = 5;
+
+/** "Deleted today", "Deleted yesterday" or "Deleted 3 days ago", by calendar day. */
+function deletedAgo(at: number, now: Date): string {
+  const days = Math.round(
+    (fromDateKey(toDateKey(now)).getTime() - fromDateKey(toDateKey(new Date(at))).getTime()) / DAY,
+  );
+  if (days <= 0) return "Deleted today";
+  if (days === 1) return "Deleted yesterday";
+  return `Deleted ${days} days ago`;
+}
+
+/** Todos deleted lately, the latest first, each with a button that brings it back. */
+function RecentlyDeleted({
+  user,
+  whenSaved,
+  onRestoreTodo,
+}: {
+  user: CurrentUser;
+  whenSaved: () => Promise<void>;
+  onRestoreTodo: (todo: Todo) => void;
+}) {
+  const { todos, status, retry, restore } = useRecentlyDeleted(user.id, whenSaved, onRestoreTodo);
+  const now = useNow();
+  const [requestedPage, setRequestedPage] = useState(1);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Restoring can shorten the list, so fall back to the last page that still exists.
+  const page = Math.max(1, Math.min(requestedPage, Math.ceil(todos.length / DELETED_PAGE_SIZE)));
+  const shown = todos.slice((page - 1) * DELETED_PAGE_SIZE, page * DELETED_PAGE_SIZE);
+
+  const bringBack = (todo: Todo) => {
+    restore(todo);
+    setNotice(`“${todo.title}” is back, due ${formatDayPhrase(todo.dueDate, now)}.`);
+  };
+
+  let list: ReactNode;
+  if (status === "loading") {
+    list = (
+      <div role="status" className={`${TEXT_ROW} text-sm text-muted`}>
+        Loading…
+      </div>
+    );
+  } else if (status === "error") {
+    list = (
+      <div className={TEXT_ROW}>
+        <span className="min-w-0 flex-1 text-sm leading-5 text-muted">
+          Couldn’t load your deleted todos.
+        </span>
+        <button
+          type="button"
+          onClick={retry}
+          className={`${BUTTON} shrink-0 bg-field text-text enabled:hover:bg-line`}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  } else if (todos.length === 0) {
+    list = (
+      <p className="py-2.5 text-sm leading-5 text-muted">
+        Nothing deleted in the last {RECENTLY_DELETED_DAYS} days.
+      </p>
+    );
+  } else {
+    list = (
+      <>
+        <ul>
+          {shown.map(({ todo, deletedAt }) => (
+            <li key={todo.id} className={`${TEXT_ROW} border-b border-line last:border-b-0`}>
+              <span className="min-w-0 flex-1">
+                <span className={`${ROW_TITLE} truncate`}>{todo.title}</span>
+                <span className={ROW_DESCRIPTION}>
+                  {[
+                    `Due ${formatDueDateTime(todo.dueDate, todo.dueTime, now)}`,
+                    ...(todo.completed ? ["Done"] : []),
+                    deletedAgo(deletedAt, now),
+                  ].join(" · ")}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => bringBack(todo)}
+                aria-label={`Restore ${todo.title}`}
+                className={`flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-sm text-text transition-colors hover:text-primary ${FOCUS}`}
+              >
+                <RotateCcw aria-hidden="true" className="size-4" />
+                Restore
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-3">
+          <Pagination
+            page={page}
+            pageSize={DELETED_PAGE_SIZE}
+            total={todos.length}
+            label="Recently deleted pages"
+            onChange={setRequestedPage}
+          />
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <SectionTitle>Recently deleted</SectionTitle>
+      <p className="text-[13px] leading-[18px] text-muted">
+        Todos you deleted in the last {RECENTLY_DELETED_DAYS} days. Restore puts one back on its due
+        date, just as it was.
+      </p>
+      {notice ? (
+        <p role="status" className="mt-3 rounded-xl bg-canvas p-3 text-sm leading-5 text-success">
+          {notice}
+        </p>
+      ) : null}
+      {list}
+    </>
+  );
+}
+
+/** Settings for how todos show, and Recently deleted. */
+function GeneralPane({
+  user,
+  whenSaved,
+  onRestoreTodo,
+}: {
+  user: CurrentUser;
+  whenSaved: () => Promise<void>;
+  onRestoreTodo: (todo: Todo) => void;
+}) {
+  const { hideCompleted, setHideCompleted } = useHideCompleted();
+  return (
+    <Pane title="General">
+      <SectionTitle>Todos</SectionTitle>
+      <SwitchRow
+        title="Hide completed todos"
+        description="Todos you’ve marked as done don’t show on Today, in this browser. Search and Reporting still show them."
+        checked={hideCompleted}
+        disabled={false}
+        onChange={setHideCompleted}
+      />
+
+      <div aria-hidden="true" className="mt-3 h-px bg-line" />
+      <RecentlyDeleted user={user} whenSaved={whenSaved} onRestoreTodo={onRestoreTodo} />
+    </Pane>
   );
 }
 
@@ -427,12 +592,21 @@ function CalendarPane({ user, whenSaved }: { user: CurrentUser; whenSaved: () =>
   );
 }
 
+/** OpenAI's mark, from Simple Icons (CC0). In the text color, so it's black or white with the theme. */
+function ChatGPTIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" />
+    </svg>
+  );
+}
+
 function IntegrationsPane() {
   return (
     <Pane title="Integrations">
       <div className={`-mx-2 ${ROW}`}>
-        <Bot aria-hidden="true" className="size-[22px] shrink-0 text-ink" />
-        <span className="min-w-0 flex-1 text-base text-text">Connect ChatGPT</span>
+        <ChatGPTIcon className="size-[22px] shrink-0 text-text" />
+        <span className="min-w-0 flex-1 text-base text-text">ChatGPT</span>
         <span className="shrink-0 text-sm text-muted">Coming soon</span>
       </div>
     </Pane>
@@ -660,6 +834,7 @@ export function SettingsSheet({
   appearance,
   onAppearanceChange,
   whenSaved,
+  onRestoreTodo,
   version,
   onClose,
 }: {
@@ -668,11 +843,13 @@ export function SettingsSheet({
   onAppearanceChange: (next: Appearance) => Promise<string | null>;
   /** Resolves once this browser's todo changes have reached the account. */
   whenSaved: () => Promise<void>;
+  /** Brings back a deleted todo, from Recently deleted. */
+  onRestoreTodo: (todo: Todo) => void;
   /** The web app's version, sent with feedback. */
   version: string;
   onClose: () => void;
 }) {
-  const [section, setSection] = useState<Section>("appearance");
+  const [section, setSection] = useState<Section>("general");
 
   return (
     <Sheet label="Settings" wide onRequestClose={onClose}>
@@ -712,6 +889,9 @@ export function SettingsSheet({
           aria-label={SECTIONS.find(({ id }) => id === section)?.label}
           className="min-h-0 flex-1 overflow-y-auto p-5 pb-[max(20px,env(safe-area-inset-bottom))] md:p-8"
         >
+          {section === "general" ? (
+            <GeneralPane user={user} whenSaved={whenSaved} onRestoreTodo={onRestoreTodo} />
+          ) : null}
           {section === "appearance" ? (
             <AppearancePane appearance={appearance} onChange={onAppearanceChange} />
           ) : null}

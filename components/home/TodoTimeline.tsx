@@ -2,8 +2,10 @@
 
 import {
   memo,
+  type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useEffectEvent,
@@ -14,7 +16,14 @@ import {
 } from "react";
 
 import { useNow } from "@/hooks/useNow";
-import { formatTime, toDateKey, toDayMinutes, type DateKey, type TimeKey } from "@/lib/dates";
+import {
+  MINUTES_PER_DAY,
+  formatTime,
+  toDateKey,
+  toDayMinutes,
+  type DateKey,
+  type TimeKey,
+} from "@/lib/dates";
 import { priorityOf, type Todo } from "@/lib/todos";
 
 /** How tall an hour is: fully zoomed out, at first, and fully zoomed in. */
@@ -194,29 +203,261 @@ export function useTimelineZoom() {
   return { scroller, hourHeight, scrollToMinutes };
 }
 
+/** The drag handle's three short lines, narrower than a menu icon's. */
+function GripLines() {
+  return (
+    <svg
+      viewBox="0 0 10 14"
+      aria-hidden="true"
+      className="h-3.5 w-2.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+    >
+      <path d="M2 4h6M2 7h6M2 10h6" />
+    </svg>
+  );
+}
+
+/** How close to the top or bottom a dragged todo has to be for the timeline to scroll. */
+const DRAG_EDGE = 48;
+/** The fastest that scrolls, in pixels a frame, right at the edge. */
+const DRAG_SCROLL_STEP = 14;
+/** How far the pointer has to go before it counts as a drag. */
+const DRAG_THRESHOLD = 3;
+
+type DragSession = {
+  todo: Todo;
+  pointerId: number;
+  /** From the todo's time on the grid down to where it was grabbed. */
+  grab: number;
+  startY: number;
+  clientY: number;
+  hourHeight: number;
+  moved: boolean;
+  minutes: number;
+  frame: number;
+  /** Takes away everything the drag set up. */
+  stop: () => void;
+};
+
+/**
+ * How long a todo takes to land on its line once it's let go. The same as the transition on a
+ * landing block (in its class, which has to be written out in full).
+ */
+const SETTLE_MS = 200;
+
+/**
+ * Dragging a todo by its handle to another time. It glides with the pointer, while its time and
+ * the orange mark show the line it would snap to, like the mark. The timeline scrolls when it's
+ * held near the top or bottom, Esc puts it back, and on letting go it springs onto its line and
+ * the new time is saved. The arrow keys on the handle move it a line at a time.
+ */
+function useTimeDrag(
+  scroller: RefObject<HTMLDivElement | null>,
+  grid: RefObject<HTMLDivElement | null>,
+  hourHeight: number,
+  todos: readonly unknown[],
+  onMove: ((todo: Todo, time: TimeKey) => void) | undefined,
+) {
+  /** The todo being dragged: the time it would snap to, and where it is now, unsnapped. */
+  const [dragging, setDragging] = useState<{ id: string; minutes: number; top: number } | null>(
+    null,
+  );
+  /** The todo landing on its line, for as long as that takes. */
+  const [settling, setSettling] = useState<string | null>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const session = useRef<DragSession | null>(null);
+  /** The handle to keep focus on once a todo moved with the keyboard has been redrawn. */
+  const refocus = useRef<string | null>(null);
+
+  const follow = useCallback(
+    (drag: DragSession) => {
+      const gridTop = grid.current?.getBoundingClientRect().top ?? 0;
+      const step = snapMinutes(drag.hourHeight);
+      const top = drag.clientY - gridTop - drag.grab;
+      const raw = ((top - GRID_TOP) / drag.hourHeight) * 60;
+      const minutes = clamp(Math.round(raw / step) * step, 0, MINUTES_PER_DAY - step);
+      drag.minutes = minutes;
+      setDragging({
+        id: drag.todo.id,
+        minutes,
+        top: clamp(
+          top,
+          offsetOf(0, drag.hourHeight),
+          offsetOf(MINUTES_PER_DAY - step, drag.hourHeight),
+        ),
+      });
+    },
+    [grid],
+  );
+
+  const settle = useCallback((id: string) => {
+    clearTimeout(settleTimer.current);
+    setSettling(id);
+    settleTimer.current = setTimeout(() => setSettling(null), SETTLE_MS + 50);
+  }, []);
+
+  const end = useCallback(() => {
+    const drag = session.current;
+    if (!drag) return;
+    session.current = null;
+    drag.stop();
+    setDragging(null);
+    // From wherever it was let go, onto its line (or back where it was).
+    if (drag.moved) settle(drag.todo.id);
+  }, [settle]);
+
+  // Leaving the page mid-drag.
+  useEffect(
+    () => () => {
+      end();
+      clearTimeout(settleTimer.current);
+    },
+    [end],
+  );
+
+  useLayoutEffect(() => {
+    const id = refocus.current;
+    if (!id) return;
+    refocus.current = null;
+    const handle = grid.current?.querySelector<HTMLElement>(`[data-move="${CSS.escape(id)}"]`);
+    if (handle && document.activeElement !== handle) handle.focus();
+  }, [grid, todos]);
+
+  const start = (event: PointerEvent<HTMLButtonElement>, todo: Todo, startMinutes: number) => {
+    if (!onMove || event.button !== 0 || session.current || !grid.current) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    // The grabbing hand stays wherever the pointer goes, and nothing gets selected on the way.
+    const body = document.body.style;
+    body.cursor = "grabbing";
+    body.userSelect = "none";
+    const onKey = (key: globalThis.KeyboardEvent) => {
+      if (key.key === "Escape") end();
+    };
+    window.addEventListener("keydown", onKey);
+
+    const drag: DragSession = {
+      todo,
+      pointerId: event.pointerId,
+      grab:
+        event.clientY -
+        grid.current.getBoundingClientRect().top -
+        offsetOf(startMinutes, hourHeight),
+      startY: event.clientY,
+      clientY: event.clientY,
+      hourHeight,
+      moved: false,
+      minutes: startMinutes,
+      frame: 0,
+      stop: () => {
+        cancelAnimationFrame(drag.frame);
+        window.removeEventListener("keydown", onKey);
+        body.removeProperty("cursor");
+        body.removeProperty("user-select");
+      },
+    };
+
+    // Near the top or bottom, the timeline scrolls, faster the closer it's held to the edge.
+    const scroll = () => {
+      const element = scroller.current;
+      if (element && drag.moved) {
+        const box = element.getBoundingClientRect();
+        const over =
+          drag.clientY < box.top + DRAG_EDGE
+            ? drag.clientY - (box.top + DRAG_EDGE)
+            : drag.clientY > box.bottom - DRAG_EDGE
+              ? drag.clientY - (box.bottom - DRAG_EDGE)
+              : 0;
+        if (over !== 0) {
+          const speed = Math.min(
+            DRAG_SCROLL_STEP,
+            Math.ceil((Math.abs(over) / DRAG_EDGE) * DRAG_SCROLL_STEP),
+          );
+          const before = element.scrollTop;
+          element.scrollTop += Math.sign(over) * speed;
+          if (element.scrollTop !== before) follow(drag);
+        }
+      }
+      drag.frame = requestAnimationFrame(scroll);
+    };
+    drag.frame = requestAnimationFrame(scroll);
+    session.current = drag;
+  };
+
+  const move = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = session.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    drag.clientY = event.clientY;
+    drag.hourHeight = hourHeight;
+    if (!drag.moved && Math.abs(event.clientY - drag.startY) < DRAG_THRESHOLD) return;
+    drag.moved = true;
+    follow(drag);
+  };
+
+  const drop = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = session.current;
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    end();
+    if (!drag.moved || !onMove) return;
+    const time = toTimeKey(drag.minutes);
+    if (time !== drag.todo.dueTime) onMove(drag.todo, time);
+  };
+
+  const cancel = (event: PointerEvent<HTMLButtonElement>) => {
+    if (session.current?.pointerId === event.pointerId) end();
+  };
+
+  /** Up or down to the next line showing. */
+  const nudge = (event: KeyboardEvent<HTMLButtonElement>, todo: Todo, startMinutes: number) => {
+    if (!onMove || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    event.preventDefault();
+    const step = snapMinutes(hourHeight);
+    const next =
+      event.key === "ArrowDown"
+        ? Math.floor(startMinutes / step) * step + step
+        : Math.ceil(startMinutes / step) * step - step;
+    const minutes = clamp(next, 0, MINUTES_PER_DAY - step);
+    if (minutes === startMinutes) return;
+    refocus.current = todo.id;
+    settle(todo.id);
+    onMove(todo, toTimeKey(minutes));
+  };
+
+  return { dragging, settling, start, move, drop, cancel, nudge };
+}
+
 /**
  * The picked day like a calendar's day view: times down the left, each timed todo as a block
  * tinted by priority, untimed todos in an "All day" row, and a red line at the current time.
  * Zooms with a pinch or Ctrl + scroll (which is also how a trackpad pinch arrives). With
  * `onAddAt`, a short orange line in the time column follows the mouse, snapped to the ticks, and
- * a click adds a todo there.
+ * a click adds a todo there. With `onMove`, each timed todo has a handle on its right to drag it
+ * to another time.
  */
 export function TodoTimeline({
   todos,
   date,
   onOpen,
   onAddAt,
+  onMove,
 }: {
   todos: readonly Todo[];
   date: DateKey;
   onOpen: (todo: Todo) => void;
   /** Adds a todo at a time clicked on the timeline. Left out on days gone by. */
   onAddAt?: (date: DateKey, time: TimeKey) => void;
+  /** Gives a todo a new time, dragged to on the timeline. Left out on days gone by. */
+  onMove?: (todo: Todo, time: TimeKey) => void;
 }) {
   const now = useNow();
   const isToday = date === toDateKey(now);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
+  const grid = useRef<HTMLDivElement>(null);
   const { scroller, hourHeight, scrollToMinutes } = useTimelineZoom();
   const { slot, hide, handlers } = useSlotHover(hourHeight, () => date, onAddAt);
   const [contentHeights, setContentHeights] = useState<Record<string, number>>({});
@@ -247,6 +488,7 @@ export function TodoTimeline({
       ),
     [timed, contentHeights, hourHeight],
   );
+  const drag = useTimeDrag(scroller, grid, hourHeight, timed, onMove);
   const lastBlock = blocks[blocks.length - 1];
   const gridHeight = Math.max(
     offsetOf(24 * 60, hourHeight),
@@ -295,8 +537,11 @@ export function TodoTimeline({
           className="absolute inset-0 touch-pan-y overflow-y-auto overscroll-y-contain [scrollbar-width:none] focus-visible:outline-2 [&::-webkit-scrollbar]:hidden focus-visible:-outline-offset-2 focus-visible:outline-ink"
         >
           <div
+            ref={grid}
             {...handlers}
-            className={`relative ${slot ? "cursor-pointer" : ""}`}
+            className={`relative ${
+              drag.dragging ? "cursor-grabbing [&_*]:cursor-grabbing" : slot ? "cursor-pointer" : ""
+            }`}
             style={{ height: gridHeight + GRID_BOTTOM }}
           >
             <SubHourLines hourHeight={hourHeight} />
@@ -304,22 +549,61 @@ export function TodoTimeline({
               <HourRow key={hour} hour={hour} top={offsetOf(hour * 60, hourHeight) - 8} />
             ))}
 
-            {timed.map(({ todo }, index) => (
-              <div
-                key={todo.id}
-                className="absolute right-0"
-                style={{
-                  left: GUTTER_WIDTH,
-                  top: blocks[index].top,
-                  height: blocks[index].height,
-                  paddingBottom: BLOCK_GAP,
-                }}
-              >
-                <TimelineChip todo={todo} onOpen={onOpen} onMeasure={measureBlock} showTime fill />
-              </div>
-            ))}
+            {timed.map(({ todo, start }, index) => {
+              // While it's dragged, it follows the pointer, showing the time it would snap to.
+              const dragged = drag.dragging?.id === todo.id ? drag.dragging : null;
+              const landing = drag.settling === todo.id;
+              return (
+                <div
+                  key={todo.id}
+                  className={`absolute right-0 ${dragged ? "z-20 drop-shadow-lg" : ""} ${
+                    landing ? "z-20 [transition:top_200ms_cubic-bezier(0.34,1.56,0.64,1),filter_150ms_ease-out] motion-reduce:[transition:none]" : ""
+                  }`}
+                  style={{
+                    left: GUTTER_WIDTH,
+                    top: dragged ? dragged.top : blocks[index].top,
+                    height: blocks[index].height,
+                    paddingBottom: BLOCK_GAP,
+                  }}
+                >
+                  <TimelineChip
+                    todo={dragged ? { ...todo, dueTime: toTimeKey(dragged.minutes) } : todo}
+                    onOpen={onOpen}
+                    onMeasure={measureBlock}
+                    showTime
+                    fill
+                    handleSpace={Boolean(onMove)}
+                  />
+                  {onMove ? (
+                    <button
+                      type="button"
+                      data-move={todo.id}
+                      aria-label={`Move ${todo.title} to another time`}
+                      aria-keyshortcuts="ArrowUp ArrowDown"
+                      title="Drag to change the time"
+                      onPointerDown={(event) => drag.start(event, todo, start)}
+                      onPointerMove={drag.move}
+                      onPointerUp={drag.drop}
+                      onPointerCancel={drag.cancel}
+                      onLostPointerCapture={drag.cancel}
+                      onKeyDown={(event) => drag.nudge(event, todo, start)}
+                      // Centered on the box, which stops BLOCK_GAP short of the bottom.
+                      className={`absolute top-[calc(50%-1px)] right-1 flex h-6 w-4 -translate-y-1/2 touch-none items-center justify-center rounded transition-opacity focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-ink ${
+                        dragged ? "cursor-grabbing" : "cursor-grab opacity-60 hover:opacity-100"
+                      } ${todo.completed ? "text-muted" : priorityOf(todo.priority).title}`}
+                    >
+                      <GripLines />
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
 
-            {slot ? <SlotMark minutes={slot.minutes} hourHeight={hourHeight} /> : null}
+            {drag.dragging ? (
+              <SlotMark minutes={drag.dragging.minutes} hourHeight={hourHeight} />
+            ) : slot ? (
+              <SlotMark minutes={slot.minutes} hourHeight={hourHeight} />
+            ) : null}
 
             {isToday ? (
               <div
@@ -477,6 +761,7 @@ export function TimelineChip({
   showTime = false,
   fill = false,
   stacked = false,
+  handleSpace = false,
 }: {
   todo: Todo;
   onOpen: (todo: Todo) => void;
@@ -485,6 +770,8 @@ export function TimelineChip({
   fill?: boolean;
   /** The time under the title, for a narrow column. */
   stacked?: boolean;
+  /** Room on the right for the drag handle drawn over it. */
+  handleSpace?: boolean;
 }) {
   const priority = priorityOf(todo.priority);
   const time = showTime && todo.dueTime ? formatTime(todo.dueTime) : null;
@@ -513,7 +800,9 @@ export function TimelineChip({
     >
       <span
         ref={content}
-        className={`flex w-full px-2 py-[5px] ${stacked ? "flex-col" : "items-start gap-2"}`}
+        className={`flex w-full py-[5px] pl-2 ${handleSpace ? "pr-6" : "pr-2"} ${
+          stacked ? "flex-col" : "items-start gap-2"
+        }`}
       >
         <span
           className={`min-w-0 flex-1 text-sm leading-[18px] font-semibold wrap-break-word ${

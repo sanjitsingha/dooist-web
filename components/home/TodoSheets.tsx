@@ -28,12 +28,14 @@ import { TimeSelector } from "@/components/home/TimeSelector";
 import { useNow } from "@/hooks/useNow";
 import {
   MINUTES_PER_DAY,
+  addDays,
   earliestReminderMinute,
   formatDueDateTime,
   formatDuration,
   formatLongDate,
   formatTime,
   fromDateKey,
+  toDateKey,
   type DateKey,
   type TimeKey,
 } from "@/lib/dates";
@@ -450,11 +452,15 @@ export function TodoDetailsSheet({
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  /** Saves what changed. False when something needs fixing first. */
-  const saveChanges = () => {
-    const dateChanged = dueDate !== opened.dueDate;
+  const tomorrow = toDateKey(addDays(fromDateKey(today), 1));
+  // Only for a todo still to do that's due today or overdue: one due later would move earlier.
+  const canMoveToTomorrow = !todo.completed && dueDate <= today;
+
+  /** Saves what changed, on `date` if given. False when something needs fixing first. */
+  const saveChanges = (date: DateKey = dueDate) => {
+    const dateChanged = date !== opened.dueDate;
     const reminderChanged = reminder !== (opened.reminderTime ?? "");
-    const wrong = scheduleProblem(dueDate, reminder, today, {
+    const wrong = scheduleProblem(date, reminder, today, {
       date: dateChanged,
       reminder: reminderChanged,
     });
@@ -471,7 +477,7 @@ export function TodoDetailsSheet({
     if (nextDescription !== (opened.description?.trim() ?? "")) {
       changes.description = nextDescription || undefined;
     }
-    if (dateChanged) changes.dueDate = dueDate;
+    if (dateChanged) changes.dueDate = date;
     if (dueTime !== (opened.dueTime ?? "")) changes.dueTime = dueTime || undefined;
     if (priority !== opened.priority) changes.priority = priority;
     const nextDuration = duration ? Number(duration) : undefined;
@@ -492,6 +498,11 @@ export function TodoDetailsSheet({
     onClose();
   };
 
+  /** Same due time and reminder, a day on from today. Anything else changed here is saved too. */
+  const moveToTomorrow = () => {
+    if (saveChanges(tomorrow)) onClose();
+  };
+
   return (
     <Sheet
       label="Todo details"
@@ -503,6 +514,7 @@ export function TodoDetailsSheet({
         <OverflowMenu
           label="Todo options"
           actions={[
+            ...(canMoveToTomorrow ? [{ label: "Move to tomorrow", onSelect: moveToTomorrow }] : []),
             { label: "Delete", destructive: true, onSelect: () => setConfirmingDelete(true) },
           ]}
         />

@@ -1,5 +1,11 @@
 import type { Priority, TodoInsert, TodoRow } from "@/lib/database.types";
-import type { DateKey, TimeKey } from "@/lib/dates";
+import {
+  MINUTES_PER_DAY,
+  fromDayMinutes,
+  toDayMinutes,
+  type DateKey,
+  type TimeKey,
+} from "@/lib/dates";
 
 export type { Priority };
 
@@ -112,6 +118,22 @@ export function toPatch(changes: TodoChanges): Partial<TodoInsert> {
   if ("duration" in changes) patch.duration = changes.duration ?? null;
   if ("priority" in changes && changes.priority) patch.priority = changes.priority;
   return patch;
+}
+
+/**
+ * A new due time, with the reminder moved by as much, so it still comes as long before. A
+ * reminder that would land on another day is left where it was.
+ */
+export function changeTime(todo: Todo, time: TimeKey): TodoChanges {
+  const changes: TodoChanges = { dueTime: time };
+  if (todo.dueTime && todo.reminderTime) {
+    const reminder =
+      toDayMinutes(todo.reminderTime) + toDayMinutes(time) - toDayMinutes(todo.dueTime);
+    if (reminder >= 0 && reminder < MINUTES_PER_DAY) {
+      changes.reminderTime = fromDayMinutes(reminder);
+    }
+  }
+  return changes;
 }
 
 // Comes after every "HH:mm" in a plain string comparison, so todos without a time go last.

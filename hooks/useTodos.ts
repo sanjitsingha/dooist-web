@@ -219,6 +219,24 @@ export function useTodos(userId: string) {
     [userId, write],
   );
 
+  /** Brings a deleted todo back, as it was, on its due date. Other devices see it come back too. */
+  const restoreTodo = useCallback(
+    (todo: Todo) => {
+      write(
+        (current) => (current.some(({ id }) => id === todo.id) ? current : [...current, todo]),
+        () =>
+          createClient()
+            .from("todos")
+            .update({ deleted_at: null })
+            .eq("user_id", userId)
+            .eq("id", todo.id)
+            .select()
+            .maybeSingle(),
+      );
+    },
+    [userId, write],
+  );
+
   const clearSaveError = useCallback(() => setSaveError(null), []);
   /** Resolves once every change made so far has been sent. */
   const whenSaved = useCallback(() => queue.current, []);
@@ -235,5 +253,6 @@ export function useTodos(userId: string) {
     updateTodo,
     toggleTodo,
     deleteTodo,
+    restoreTodo,
   };
 }
